@@ -12,6 +12,7 @@
 #define MAX_CLIENTS 100
 #define CLIENT_LIST_SEM "/client_list_sem"
 #define WUP_SEM "/wup_sem"
+#define HEADER_SIZE 4
 
 void sem_cleanup(void);
 void* wup_sender(void* arg);

@@ -13,7 +13,7 @@
 #include "so_game_protocol.h"
 #include "server_common.h"
 #include "error_helper.h"
-
+#include "common.c"
 
 void* server_connection_handler(void* arg)
 {
@@ -33,7 +33,7 @@ void* server_connection_handler(void* arg)
         ERROR_HELPER(ret, "Could not read id packet from client");
         bytes_read += ret;
     }
-    IdPacket* id_packet = (IdPacket*) Packet_deserialize(buffer, read_bytes);
+    IdPacket* id_packet = (IdPacket*) Packet_deserialize(buffer, bytes_read);
     if (DEBUG && id_packet->id == -1) printf("id request received from socket: %d\n", tcp_socket_desc);
 
     id_packet->id = client_id;
@@ -47,7 +47,7 @@ void* server_connection_handler(void* arg)
         if (ret == -1 && errno == EINTR) continue;
         ERROR_HELPER(ret, "Could not send back id to socket\n");
     }
-    Packet_free(id_packet);
+    Packet_free((PacketHeader*) id_packet);
 
 
     //receiving texture
@@ -61,7 +61,7 @@ void* server_connection_handler(void* arg)
         ERROR_HELPER(ret, "Cannot recv texture from client\n");
         bytes_read += ret;
     }
-    ImagePacket* texture_packet = (ImagePacket*) Packet_deserialize(buffer, read_bytes);
+    ImagePacket* texture_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
     if (texture_packet->id != client_id || texture_packet->header.type != 0x2)
         ERROR_HELPER(-1, "Id or packet type not corresponding to client, closing connection\n");
     if (DEBUG) printf("Client: %d texture received successfully\n", client_id);
@@ -74,14 +74,14 @@ void* server_connection_handler(void* arg)
     map_texture->header.type = 0x4;
     map_texture->header.size = sizeof(map_texture);
     bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) map_texture);
-    memcpy(buffer, bytes_to_send, HEADER_SIZE);
+    memcpy(buffer, &bytes_to_send, HEADER_SIZE);
     bytes_to_send += HEADER_SIZE;
     bytes_sent = 0;
     while (bytes_sent < bytes_to_send)
     {
         ret = send(tcp_socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0);
         if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Could not send map texture to client: %d\n", client_id);
+        ERROR_HELPER(ret, "Could not send map texture to client\n");
         bytes_sent += ret;
     }
     free(map_texture);
@@ -94,14 +94,14 @@ void* server_connection_handler(void* arg)
     map_elevation->header.type = 0x4;
     map_elevation->header.size = sizeof(map_elevation);
     bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) map_elevation);
-    memcpy(buffer, bytes_to_send, HEADER_SIZE);
+    memcpy(buffer, &bytes_to_send, HEADER_SIZE);
     bytes_to_send += HEADER_SIZE;
     bytes_sent = 0;
     while (bytes_sent < bytes_to_send)
     {
         ret = send(tcp_socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0);
         if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Could not send map texture to client: %d\n", client_id);
+        ERROR_HELPER(ret, "Could not send map texture to client\n");
         bytes_sent += ret;
     }
     free(map_elevation);
@@ -119,9 +119,16 @@ void* server_connection_handler(void* arg)
     sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+
     List_insert(args->client_list, args->client_list->last, (ListItem*) client);
     World_addVehicle(args->world, veh);
-    ret = sem_post(WUP_SEM);
+    WorldUpdatePacket* wup = args->wup;
+    wup->num_vehicles += 1;
+    wup->updates = (ClientUpdate*) realloc(wup->updates, sizeof(ClientUpdate)*(wup->num_vehicles));
+    wup->updates[wup->num_vehicles -1].id = client_id;
+    ClientUpdate* cl_up = &(wup->updates[wup->num_vehicles -1]);
+
+    ret = sem_post(sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
     ret = sem_close(sem);
     ERROR_HELPER(ret, "Could not close wup_sem\n");
@@ -141,7 +148,7 @@ void* server_connection_handler(void* arg)
             ret = sem_wait(sem);
             ERROR_HELPER(ret, "Could not wait wup sem to log out client\n");
             List_detach(args->client_list, (ListItem*) client);
-            wup_cl_remove(wup, client_id);
+            wup_cl_remove(args->wup, client_id);
             ret = sem_post(sem);
             ERROR_HELPER(ret, "Could not post wup sem to log out client\n");
             ret = sem_close(sem);
@@ -161,7 +168,7 @@ void* server_connection_handler(void* arg)
             cl_up->x = veh->x;
             cl_up->y = veh->y;
             cl_up->theta = cl_up->theta;
-            if (DEBUG) printf("Updated vehicle: %d on %d\n", client_id, args->world->dt);
+            if (DEBUG) printf("Updated vehicle: %d on %f\n", client_id, args->world->dt);
         }
     }
 }

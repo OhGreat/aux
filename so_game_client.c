@@ -17,6 +17,7 @@
 #include "so_game_protocol.h"
 #include "error_helper.h"
 #include "client_common.h"
+#include "common.c"
 
 
 int window;
@@ -24,21 +25,7 @@ WorldViewer viewer;
 World world;
 Vehicle* vehicle; // The vehicle
 
-int message_size_getter(int socket_desc, int header_size) {
-    int bytes_read, bytes_to_read, ret;
-    char buffer[header_size];
 
-    bytes_read = 0;
-    while (bytes_read < header_size)
-    {
-        ret = recv(socket_desc, buffer+bytes_read, header_size - bytes_read, 0);
-        if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Cannot receive id from server\n");
-        bytes_read += ret;
-    }
-    memcpy(&bytes_to_read, buffer, header_size);
-    return bytes_to_read;
-}
 
 int main(int argc, char **argv) {
   if (argc<3) {
@@ -93,12 +80,12 @@ int main(int argc, char **argv) {
   bytes_read = 0;
   while (bytes_read < bytes_to_read)
   {
-      ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - read_bytes, 0);
+      ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - bytes_read, 0);
       if (ret == -1 && errno == EINTR) continue;
       ERROR_HELPER(ret, "Cannot receive id from server\n");
       bytes_read += ret;
   }
-  Packet_free( (PacketHeader*) id_packet)
+  Packet_free( (PacketHeader*) id_packet);
   id_packet = (IdPacket *) Packet_deserialize(buffer, bytes_read);
   int my_id = id_packet->id;
   Packet_free( (PacketHeader*) id_packet);
@@ -129,9 +116,9 @@ int main(int argc, char **argv) {
       ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - bytes_read, 0);
       if (ret == -1 && errno == EINTR) continue;
      ERROR_HELPER(ret, "Cannot receive id from server\n");
-     read_bytes += ret;
+     bytes_read += ret;
   }
-  ImagePacket* map_texture_packet = (ImagePacket*) Packet_deserialize(buffer, read_bytes);
+  ImagePacket* map_texture_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
   if (map_texture_packet->id != 0 || map_texture_packet->header.type != 0x4)
       ERROR_HELPER(-1, "Cannot receive map texture from server\n");
   Image* map_texture = map_texture_packet->image;
@@ -146,9 +133,9 @@ int main(int argc, char **argv) {
       ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - bytes_read, 0);
       if (ret == -1 && errno == EINTR) continue;
       ERROR_HELPER(ret, "Cannot receive id from server\n");
-      read_bytes += ret;
+      bytes_read += ret;
   }
-  ImagePacket* map_elevation_packet = (ImagePacket*) Packet_deserialize(buffer, read_bytes);
+  ImagePacket* map_elevation_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
   if (map_elevation_packet->id != 0 || map_elevation_packet->header.type != 0x5)
       ERROR_HELPER(-1,"Wrong id or packet type received from server\n");
   Image* map_elevation = map_elevation_packet->image;
@@ -166,10 +153,11 @@ int main(int argc, char **argv) {
   thread_args->vehicles = world.vehicles;
   thread_args->my_id = my_id;
   thread_args->world = &world;
-  thread_args->server_addr = server_addr;
+  thread_args->server_addr = &server_addr;
   ret = pthread_create(&wup_receiver_thread, NULL, wup_receiver, thread_args);
   ERROR_HELPER(ret, "Could not create wup receiver thread\n");
-  ret = pthread_detach(ret, "Unable to detach wup receiver thread\n");
+  ret = pthread_detach(wup_receiver_thread);
+  ERROR_HELPER(ret, "Unable to detach wup receiver thread\n");
   if (DEBUG) printf("Created thread to receive wup from server\n");
 
   //thread to send cl_up to server
@@ -184,7 +172,7 @@ int main(int argc, char **argv) {
 
 
 //handles wup received from server and calls unknown_veh_handler when needed
-void wup_receiver (void* arg)
+void* wup_receiver (void* arg)
 {
     int ret, socket_desc, bytes_read, bytes_to_read, bytes_sent, bytes_to_send;
     struct sockaddr_in server_addr, client_addr;
@@ -203,19 +191,19 @@ void wup_receiver (void* arg)
     ret = bind(socket_desc, (struct sockaddr*) &client_addr, sizeof(client_addr));
     ERROR_HELPER( ret, "Error binding wup receiver port to socket\n");
 
-    Vehicle* current_veh = (Vehicle) args->vehicles.first;
+    Vehicle* current_veh = (Vehicle*) args->vehicles.first;
     while (1)
     {
-        read_bytes = 0;
+        bytes_read = 0;
         bytes_to_read = message_size_getter(socket_desc, HEADER_SIZE);
-        while (read_bytes < bytes_to_read)
+        while (bytes_read < bytes_to_read)
         {
-            ret = recv(socket_desc, buffer+read_bytes, bytes_to_read-read_bytes, 0);
+            ret = recv(socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, 0);
             if (ret == -1 && errno == EINTR) continue;
             ERROR_HELPER(ret, "Could not read from socket in wup recv");
             bytes_read += ret;
         }
-        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, read_bytes);
+        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_read);
         update_vehs = wup->num_vehicles;
         for (i=0; i<update_vehs; i++)
         {
@@ -229,8 +217,8 @@ void wup_receiver (void* arg)
             else if (wup->updates[i].id != args->my_id)
             {
                 if (DEBUG) printf("requesting texture of veh: %d\n",wup->updates[i].id);
-                unknown_veh_handler(args->server_addr, update->updates[i].id, args->world, wup->updates[i]);
-                if (DEBUG) printf("texture of veh: %d received\n", wup->upodates[i]->id);
+                unknown_veh_handler(args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
+                if (DEBUG) printf("texture of veh: %d received\n", wup->updates[i].id);
             }
         }
     }
@@ -238,7 +226,7 @@ void wup_receiver (void* arg)
 
 
 //handles texture requests and adds vehicle to world
-void unknown_veh_handler(struct sockaddr_in addr, int id, World* world, ClientUpdate* cl_up)
+void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientUpdate cl_up)
 {
     int ret, socket_desc, bytes_read, bytes_to_read, bytes_sent, bytes_to_send;
     char buffer[1024*1024*5];
@@ -251,10 +239,10 @@ void unknown_veh_handler(struct sockaddr_in addr, int id, World* world, ClientUp
 
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_TEXTURE_HANDLER_PORT);
-    server_addr.sin_addr.s_addr = addr.sin_addr.s_addr;
+    server_addr.sin_addr.s_addr = addr->sin_addr.s_addr;
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
-    ret = bind(socket_desc, (struct sockaddr*) client_addr, sizeof(client_addr));
+    ret = bind(socket_desc, (struct sockaddr*) &client_addr, sizeof(client_addr));
     ERROR_HELPER(ret, "Error binding texture handler port to socket");
 
     texture = malloc(sizeof(ImagePacket));
@@ -262,7 +250,7 @@ void unknown_veh_handler(struct sockaddr_in addr, int id, World* world, ClientUp
     texture->image = NULL;
     texture->header.type = 0x2;
     texture->header.size = sizeof(ImagePacket);
-    bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, texture);
+    bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) texture);
 
     memcpy(buffer, &bytes_to_send, HEADER_SIZE);
     bytes_to_send += HEADER_SIZE;
@@ -282,23 +270,22 @@ void unknown_veh_handler(struct sockaddr_in addr, int id, World* world, ClientUp
         ret = recv(socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, 0);
         if (ret == -1 && errno == EINTR) continue;
         ERROR_HELPER(ret, "Cannot receive id from server\n");
-        read_bytes += ret;
+        bytes_read += ret;
     }
 
-    Packet_free(texture);
-    texture = (ImagePacket*) Packet_deserialize(buffer, read_bytes);
+    Packet_free( (PacketHeader*) texture);
+    texture = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
     if (texture->id == id && texture->image != NULL) {
 
         Vehicle* veh = malloc(sizeof(Vehicle));
         Vehicle_init(veh, world, id, texture->image);
         World_addVehicle(world, veh);
-        veh->x = cl_up->x;
-        veh->y = cl_up->y;
-        veh->theta = cl_up->theta;
+        veh->x = cl_up.x;
+        veh->y = cl_up.y;
+        veh->theta = cl_up.theta;
     }
-    else Packet_free(texture);
+    else Packet_free((PacketHeader*) texture);
 }
-
 
 void* client_updater_for_server(void* arg)
 {

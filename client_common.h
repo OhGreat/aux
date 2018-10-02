@@ -9,7 +9,7 @@
 #define HEADER_SIZE 4
 
 void* wup_receiver(void* arg);
-void unknown_veh_handler( char server_address[] int id, World* world);
+void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientUpdate cl_up);
 
 
 typedef struct {
