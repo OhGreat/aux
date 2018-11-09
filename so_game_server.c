@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
 
       //creating udp client addr to pass to client thread
       cl_up_client_addr->sin_family = AF_INET;
-      cl_up_client_addr->sin_port = htons(CL_UP_RECV_PORT);
+
       cl_up_client_addr->sin_addr.s_addr = tcp_server_addr.sin_addr.s_addr;
 
       pthread_t client_handler_thread;
@@ -205,6 +205,7 @@ int main(int argc, char **argv) {
       thread_args->cl_up_recv_sock = cl_up_recv_sock;
       thread_args->server_cl_up_recv_addr = &server_cl_up_recv_addr;
       thread_args->texture_handler_socket = texture_handler_socket;
+      thread_args->cl_up_client_addr = cl_up_client_addr;
       thread_args->world = world;
       thread_args->map_info = map_info;
       thread_args->wup = wup;
@@ -232,12 +233,12 @@ int main(int argc, char **argv) {
 //function to send wup to clients***********************************************
 void* wup_sender(void* arg) {
     int ret = 0, i = 0;
-    int bytes_to_write, socket_desc;
+    int bytes_to_send, bytes_sent, socket_desc;
     struct sockaddr_in client_addr = {0};
     client_addr.sin_family = AF_INET;
     client_addr.sin_port = htons(CLIENT_WUP_RECEIVER_PORT);
 
-    char buffer[1024*1024];
+    char buffer[1024*1024*5];
     wup_sender_args* args = (wup_sender_args*) arg;
 
     ListHead* client_list = args->client_list;
@@ -259,17 +260,26 @@ void* wup_sender(void* arg) {
         ERROR_HELPER(ret, "Cannot wait wup sem\n");
 
         n_clients = client_list->size;
-        printf("n clients:%d\n",n_clients);
+        printf("n connected clients:%d\n",n_clients);
         client = (Client_info*) client_list->first;
+        printf("wup size = %d\n", args->wup->num_vehicles);
+        bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) args->wup);
+        memcpy(buffer, &bytes_to_send, HEADER_SIZE);
+        bytes_to_send += HEADER_SIZE;
 
         while (i < n_clients) {
 
             client_addr.sin_addr.s_addr = client->client_addr->sin_addr.s_addr;
-            bytes_to_write = Packet_serialize(buffer, (PacketHeader*) args->wup);
-            ret = sendto(socket_desc, buffer, bytes_to_write, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-            ERROR_HELPER(ret, "Cannot send wup to client\n");
+            bytes_sent = 0;
+            while (bytes_sent < bytes_to_send)
+            {
+              ret = sendto(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+              if (ret == -1 && errno == EINTR) continue;
+              ERROR_HELPER(ret, "Could not send wup to client\n");
+              bytes_sent += ret;
+            }
 
-            if (DEBUG) printf("wup sent to: %d\n", client->id );
+            if (DEBUG) printf("wup sent to: %d\n", client->id);
             client = (Client_info*) client->list.next;
             i++;
 
@@ -285,13 +295,14 @@ void* wup_sender(void* arg) {
           ERROR_HELPER(ret, "Cannot close client list semaphore\n");
           ret = usleep(50000);
           if (ret == -1 && errno == EINTR) printf("error sleeping thread with usleep\n");
+          if (DEBUG) printf("successfully sent wup to all clients\n");
     }
 }
 
 //function to handle textre requests**********************************************
 void* texture_request_handler(void* arg) {
   int ret = 0;
-  int read_bytes, bytes_to_write, socket_desc;
+  int read_bytes, bytes_to_send, socket_desc;
   struct sockaddr_in client_addr = {0};
   int sockaddr_len = sizeof(struct sockaddr_in);
   char buffer[1024*1024];
@@ -314,8 +325,8 @@ void* texture_request_handler(void* arg) {
 
     vehicle = World_getVehicle(args->world, text_req->id);
     text_req->image = vehicle->texture;
-    bytes_to_write = Packet_serialize(buffer, (PacketHeader*) text_req);
-    ret = sendto(socket_desc, buffer, bytes_to_write, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+    bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
+    ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
     ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
     printf("texture: %d sent to client!\n", text_req->id);
     Packet_free((PacketHeader*)text_req);

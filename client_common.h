@@ -10,7 +10,8 @@
 
 void* wup_receiver(void* arg);
 void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientUpdate cl_up);
-
+void quit_handler(void);
+void* client_updater_for_server(void* arg);
 
 typedef struct {
   ListHead vehicles;
@@ -22,4 +23,4 @@ typedef struct {
 typedef struct {
     Vehicle* veh;
     struct sockaddr_in server_addr;
-} client_updater_args;
+} cl_up_args;

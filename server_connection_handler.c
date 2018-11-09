@@ -21,6 +21,8 @@ void* server_connection_handler(void* arg)
     char buffer[1024*1024*5];
     connection_handler_args* args = (connection_handler_args*) arg;
     tcp_socket_desc = args->tcp_socket_desc;
+    struct sockaddr_in* cl_up_client_addr = args->cl_up_client_addr;
+
     client_id = args->tcp_socket_desc;
 
     //sending id
@@ -46,8 +48,10 @@ void* server_connection_handler(void* arg)
         ret = send(tcp_socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0);
         if (ret == -1 && errno == EINTR) continue;
         ERROR_HELPER(ret, "Could not send back id to socket\n");
+        bytes_sent += ret;
     }
     Packet_free((PacketHeader*) id_packet);
+    if (DEBUG) printf("id sent succesfully to client: %d\n", client_id);
 
 
     //receiving texture
@@ -127,20 +131,23 @@ void* server_connection_handler(void* arg)
     wup->updates = (ClientUpdate*) realloc(wup->updates, sizeof(ClientUpdate)*(wup->num_vehicles));
     wup->updates[wup->num_vehicles -1].id = client_id;
     ClientUpdate* cl_up = &(wup->updates[wup->num_vehicles -1]);
+    cl_up->x = veh->x;
+    cl_up->y = veh->y;
+    cl_up->theta = veh->theta;
 
     ret = sem_post(sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
-    ret = sem_close(sem);
-    ERROR_HELPER(ret, "Could not close wup_sem\n");
+    //ret = sem_close(sem);
+    //ERROR_HELPER(ret, "Could not close wup_sem\n");
     if (DEBUG) printf("Client: %d logged in successfully\n", client_id);
 
-
     //keep receiving vehicle updates from client
+
     if (DEBUG) printf("Now receiving vehicle updates from client: %d\n",client_id);
     while (1)
     {
+        while (1) {}
         bytes_to_read = message_size_getter(args->cl_up_recv_sock, HEADER_SIZE);
-
         if (bytes_to_read == 0)
         {
             sem = sem_open(WUP_SEM, 0);
@@ -153,21 +160,35 @@ void* server_connection_handler(void* arg)
             ERROR_HELPER(ret, "Could not post wup sem to log out client\n");
             ret = sem_close(sem);
             ERROR_HELPER(ret, "Could not close wup sem to log out client\n");
-
+            ret = sem_close(sem);
+            ERROR_HELPER(ret, "Could not close wup_sem\n");
             pthread_exit(NULL);
         }
         bytes_read = 0;
-        VehicleUpdatePacket* vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
+        int sem_value;
+        while (bytes_read < bytes_to_read)
+        {
+          ret = recv(args->cl_up_recv_sock, buffer+bytes_read, bytes_to_read-bytes_read, 0);
+          if (ret == -1 && errno == EINTR) continue;
+          ERROR_HELPER(ret, "Cannot read cl_up\n");
+          bytes_read += ret;
+        }
+        VehicleUpdatePacket* vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read); //ERROR??
         if (vup->id == client_id) {
-            sem = sem_open(WUP_SEM, 0);
-            ret = sem_wait(sem);
-            ERROR_HELPER(ret, "Could not wait wup sem to update client position\n");
+
+            //ret = sem_wait(sem);
+            //ERROR_HELPER(ret, "Could not wait wup sem to update client position\n");
+            ERROR_HELPER(ret, "Could not read value of wup sem\n");
             veh->translational_force_update = vup->translational_force;
             veh->rotational_force_update = vup->rotational_force;
             Vehicle_update(veh, args->world->dt);
+            ret = sem_getvalue(sem, &sem_value);
+            if (sem_value != 1) continue;
             cl_up->x = veh->x;
             cl_up->y = veh->y;
             cl_up->theta = cl_up->theta;
+            //ret = sem_post(sem);
+            //ERROR_HELPER(ret, "Cannot post sem after reading cl_up\n");
             if (DEBUG) printf("Updated vehicle: %d on %f\n", client_id, args->world->dt);
         }
     }

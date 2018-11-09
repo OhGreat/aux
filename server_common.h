@@ -29,6 +29,7 @@ typedef struct {
     struct sockaddr_in* client_addr;
     int cl_up_recv_sock;
     struct sockaddr_in* server_cl_up_recv_addr;
+    struct sockaddr_in* cl_up_client_addr;
     int texture_handler_socket;
     World* world;
     Map* map_info;

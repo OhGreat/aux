@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #include "image.h"
 #include "surface.h"
@@ -25,7 +26,7 @@ WorldViewer viewer;
 World world;
 Vehicle* vehicle; // The vehicle
 
-
+char* global_server_addr;
 
 int main(int argc, char **argv) {
   if (argc<3) {
@@ -42,9 +43,10 @@ int main(int argc, char **argv) {
   }
 
   char buffer[1024*1024*5];
-  int buffer_len = sizeof(buffer);
+
   int main_socket_desc, bytes_to_send, bytes_sent, bytes_to_read, bytes_read, ret;
   struct sockaddr_in server_addr = {0};
+  global_server_addr = argv[1];
 
   main_socket_desc = socket(AF_INET, SOCK_STREAM, 0);
   ERROR_HELPER(main_socket_desc, "Could not create socket\n");
@@ -105,6 +107,7 @@ int main(int argc, char **argv) {
       ret = send(main_socket_desc, buffer + bytes_sent, bytes_to_send - bytes_sent, 0);
     if (errno == EINTR) continue;
     ERROR_HELPER(ret, "Cannot send vehicle texture to server\n");
+    bytes_sent += ret;
   }
   if (DEBUG) printf("vehicle texture sent succesfully to server, written: %d bytes\n", bytes_to_send);
 
@@ -136,7 +139,7 @@ int main(int argc, char **argv) {
       bytes_read += ret;
   }
   ImagePacket* map_elevation_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
-  if (map_elevation_packet->id != 0 || map_elevation_packet->header.type != 0x5)
+  if (map_elevation_packet->id != 0 || map_elevation_packet->header.type != 0x4)
       ERROR_HELPER(-1,"Wrong id or packet type received from server\n");
   Image* map_elevation = map_elevation_packet->image;
   if (DEBUG) printf("elevation map received succesfully\n");
@@ -162,7 +165,16 @@ int main(int argc, char **argv) {
 
   //thread to send cl_up to server
   pthread_t cl_up_thread;
+  cl_up_args* cl_args = malloc(sizeof(cl_up_args));
+  cl_args->veh = vehicle;
+  cl_args->server_addr = server_addr;
+  ret = pthread_create(&cl_up_thread, NULL, client_updater_for_server, cl_args);
+  ERROR_HELPER(ret, "Could not create cl_up sender thread\n");
+  ret = pthread_detach(cl_up_thread);
+  ERROR_HELPER(ret, "Unable to detach cl_up sender thread\n");
+  if (DEBUG) printf("Created thread to send cl_up to server\n");
 
+  //signal(SIGINT, quit_handler);
 
   WorldViewer_runGlobal(&world, vehicle, &argc, argv);
   //cleanup
@@ -174,8 +186,8 @@ int main(int argc, char **argv) {
 //handles wup received from server and calls unknown_veh_handler when needed
 void* wup_receiver (void* arg)
 {
-    int ret, socket_desc, bytes_read, bytes_to_read, bytes_sent, bytes_to_send;
-    struct sockaddr_in server_addr, client_addr;
+    int ret, socket_desc, bytes_read, bytes_to_read;
+    struct sockaddr_in client_addr;
     char buffer[1024*1024*5];
     wup_receiver_args* args = (wup_receiver_args*) arg;
     int i, update_vehs, world_vehs;
@@ -200,10 +212,10 @@ void* wup_receiver (void* arg)
         {
             ret = recv(socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, 0);
             if (ret == -1 && errno == EINTR) continue;
-            ERROR_HELPER(ret, "Could not read from socket in wup recv");
+            ERROR_HELPER(ret, "Could not read from socket in wup recv\n");
             bytes_read += ret;
         }
-        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_read);
+        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_read); // ERROR?
         update_vehs = wup->num_vehicles;
         for (i=0; i<update_vehs; i++)
         {
@@ -221,6 +233,15 @@ void* wup_receiver (void* arg)
                 if (DEBUG) printf("texture of veh: %d received\n", wup->updates[i].id);
             }
         }
+        Vehicle* veh = (Vehicle*) args->vehicles.first;
+        int j;
+        world_vehs = args->world->vehicles.size;
+        for (j=0;j<world_vehs;j++) {
+          for (i=0; i < update_vehs && veh->id != wup->updates[i].id; i++) {
+          }
+          if (veh->id != wup->updates[i].id ) World_detachVehicle(args->world, veh);
+        }
+        if (DEBUG) printf("wup read succesfully\n");
     }
 }
 
@@ -251,13 +272,12 @@ void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientU
     texture->header.type = 0x2;
     texture->header.size = sizeof(ImagePacket);
     bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) texture);
-
     memcpy(buffer, &bytes_to_send, HEADER_SIZE);
     bytes_to_send += HEADER_SIZE;
     bytes_sent = 0;
     while (bytes_sent < bytes_to_send) {
 
-        ret = send(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0);
+        ret = sendto(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
         if (ret == -1 && errno == EINTR) continue;
         ERROR_HELPER(ret, "Error sending texture request to server");
         bytes_sent += ret;
@@ -289,8 +309,8 @@ void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientU
 
 void* client_updater_for_server(void* arg)
 {
-    client_updater_args* args = (client_updater_args*) arg;
-    int ret, bytes_to_send, bytes_sent, socket_desc;
+    cl_up_args* args = (cl_up_args*) arg;
+    int ret=0, bytes_to_send, bytes_sent, socket_desc;
     struct sockaddr_in server_addr;
     char buffer[1024];
     VehicleUpdatePacket* veh_up  = malloc(sizeof(VehicleUpdatePacket));
@@ -302,8 +322,6 @@ void* client_updater_for_server(void* arg)
     server_addr.sin_addr.s_addr = args->server_addr.sin_addr.s_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(CL_UP_RECV_PORT);
-
-    signal(SIGINT, quit_handler);
 
     while (1)
     {
@@ -317,16 +335,18 @@ void* client_updater_for_server(void* arg)
         bytes_sent = 0;
         while(bytes_sent < bytes_to_send)
         {
-            ret = send(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0);
+            ret = sendto(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
             if (ret == -1 && errno == EINTR) continue;
             ERROR_HELPER(ret, "Could not send client update to server!\n");
+            bytes_sent += ret;
         }
         if (DEBUG) printf("sent client update packet to server\n");
         usleep(50000);
     }
 }
 
-void quit_handler() {
+void quit_handler()
+{
     int ret, socket_desc, bytes_sent, bytes_to_send;
     char buffer[] = {0,0,0,0};
     struct sockaddr_in server_addr;
@@ -334,5 +354,18 @@ void quit_handler() {
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
     ERROR_HELPER(socket_desc, "Could not create quit handler socket\n");
 
-    server_addr.sin_addr.s_addr = ???????
+    server_addr.sin_addr.s_addr = inet_addr(global_server_addr);
+    server_addr.sin_port = htons(CL_UP_RECV_PORT);
+    server_addr.sin_family = AF_INET;
+
+    bytes_sent = 0;
+    bytes_to_send = sizeof(buffer);
+    while (bytes_sent < bytes_to_send)
+    {
+      ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+      ERROR_HELPER(ret, "Could not send quit msg to server!\n");
+    }
+    if (DEBUG) printf("quit message sent to server, exiting...\n");
+    exit(0);
+
 }
