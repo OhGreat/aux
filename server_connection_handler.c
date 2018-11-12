@@ -27,9 +27,7 @@ void* server_connection_handler(void* arg)
 
     //sending id
     bytes_read = recv(tcp_socket_desc, &bytes_to_read, sizeof(int), MSG_WAITALL);
-    printf("bytes_read [packet_size]: %d", bytes_read);
     bytes_read = recv(tcp_socket_desc, buffer, bytes_to_read, MSG_WAITALL);
-    printf("bytes_read [packet_data]: %d", bytes_read);
     bytes_read = 0;
 
     IdPacket* id_packet = (IdPacket*) Packet_deserialize(buffer, bytes_read);
@@ -145,6 +143,8 @@ void* server_connection_handler(void* arg)
     {
 
         bytes_read = recvfrom(args->cl_up_recv_sock, &bytes_to_read, HEADER_SIZE, MSG_WAITALL, (struct sockaddr*) cl_up_client_addr, (socklen_t*) sizeof(struct sockaddr_in*));
+        printf("VEH UP (%d): %d and to read: %d\n", client_id, bytes_read, bytes_to_read);
+
         if (bytes_to_read == 0)
         {
             sem = sem_open(WUP_SEM, 0);

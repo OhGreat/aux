@@ -195,7 +195,6 @@ int main(int argc, char **argv) {
 
       //creating udp client addr to pass to client thread
       cl_up_client_addr->sin_family = AF_INET;
-
       cl_up_client_addr->sin_addr.s_addr = tcp_server_addr.sin_addr.s_addr;
 
       pthread_t client_handler_thread;
@@ -233,7 +232,7 @@ int main(int argc, char **argv) {
 //function to send wup to clients***********************************************
 void* wup_sender(void* arg) {
     int ret = 0, i = 0;
-    int bytes_to_send, bytes_sent, socket_desc;
+    int bytes_to_send, socket_desc;
     struct sockaddr_in client_addr = {0};
     client_addr.sin_family = AF_INET;
     client_addr.sin_port = htons(CLIENT_WUP_RECEIVER_PORT);
@@ -269,8 +268,8 @@ void* wup_sender(void* arg) {
 
             client_addr.sin_addr.s_addr = client->client_addr->sin_addr.s_addr;
 
-            bytes_sent = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-            bytes_sent = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+            ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+            ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
 
             if (DEBUG) printf("wup sent to: %d\n", client->id);
             client = (Client_info*) client->list.next;
@@ -295,22 +294,22 @@ void* wup_sender(void* arg) {
 //function to handle textre requests**********************************************
 void* texture_request_handler(void* arg) {
   int ret = 0;
-  int read_bytes, bytes_to_send, socket_desc;
-  struct sockaddr_in client_addr = {0};
+  int read_bytes, bytes_to_send, bytes_to_read, socket_desc;
+  struct sockaddr_in client_addr ={0};
   int sockaddr_len = sizeof(struct sockaddr_in);
   char buffer[1024*1024];
-  int buffer_len = sizeof(buffer);
   texture_handler_args* args = (texture_handler_args*) arg;
   socket_desc = args->socket_desc;
   Vehicle* vehicle;
 
 
   while(1) {
-
-    read_bytes = recvfrom(socket_desc, buffer, buffer_len, 0, (struct sockaddr*) &client_addr, (socklen_t*) &sockaddr_len);
+    read_bytes = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
+    printf("TEXTURE recv bytes: %d", bytes_to_read);
+    read_bytes = recvfrom(socket_desc, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &client_addr, (socklen_t*) &sockaddr_len );
     ERROR_HELPER(read_bytes, "Cannot receive vehicle update packet from client\n");
 
-    printf("Texture request received from client\n");
+    printf("Texture request received!!!\n");
 
     ImagePacket* text_req = (ImagePacket*) Packet_deserialize(buffer, read_bytes);
     if (text_req->header.type != 0x2 && text_req->id == 0)
@@ -322,7 +321,7 @@ void* texture_request_handler(void* arg) {
     ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
     ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
     printf("texture: %d sent to client!\n", text_req->id);
-    Packet_free((PacketHeader*)text_req);
+    Packet_free((PacketHeader*) text_req);
 
   }
 }

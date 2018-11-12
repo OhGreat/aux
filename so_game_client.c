@@ -221,9 +221,7 @@ void* wup_receiver (void* arg)
             }
             else if (wup->updates[i].id != args->my_id)
             {
-                if (DEBUG) printf("requesting texture of veh: %d\n",wup->updates[i].id);
-                unknown_veh_handler(args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
-                if (DEBUG) printf("texture of veh: %d received\n", wup->updates[i].id);
+              unknown_veh_handler(args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
             }
         }
         Vehicle* veh = (Vehicle*) args->vehicles.first;
@@ -242,7 +240,7 @@ void* wup_receiver (void* arg)
 //handles texture requests and adds vehicle to world
 void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientUpdate cl_up)
 {
-    int ret, socket_desc, bytes_read, bytes_to_read, bytes_sent, bytes_to_send;
+    int ret, socket_desc, bytes_to_read, bytes_to_send;
     char buffer[1024*1024*5];
     struct sockaddr_in server_addr, client_addr;
     ImagePacket* texture;
@@ -287,6 +285,7 @@ void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientU
         veh->theta = cl_up.theta;
     }
     else Packet_free((PacketHeader*) texture);
+    if (DEBUG) printf("texture of veh n. %d received succesfully\n", id);
 }
 
 void* client_updater_for_server(void* arg)
