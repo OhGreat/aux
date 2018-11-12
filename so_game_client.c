@@ -264,30 +264,19 @@ void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientU
     texture->image = NULL;
     texture->header.type = 0x2;
     texture->header.size = sizeof(ImagePacket);
-    bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) texture);
-    memcpy(buffer, &bytes_to_send, HEADER_SIZE);
-    bytes_to_send += HEADER_SIZE;
-    bytes_sent = 0;
-    while (bytes_sent < bytes_to_send) {
+    bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture);
 
-        ret = sendto(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
-        if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Error sending texture request to server");
-        bytes_sent += ret;
-    }
+    ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+    ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
 
-    bytes_read = 0;
-    bytes_to_read = message_size_getter(socket_desc, HEADER_SIZE);
-    while (bytes_read < bytes_to_read)
-    {
-        ret = recv(socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, 0);
-        if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Cannot receive id from server\n");
-        bytes_read += ret;
-    }
+    if (DEBUG) printf("texture request of veh n. %d sent to server\n", id);
+
+    ret = recvfrom(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL, (struct sockaddr*) &server_addr, (socklen_t*) sizeof(&server_addr));
+    ret = recvfrom(socket_desc, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &server_addr, (socklen_t*) sizeof(&server_addr));
+
 
     Packet_free( (PacketHeader*) texture);
-    texture = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
+    texture = (ImagePacket*) Packet_deserialize(buffer, bytes_to_read);
     if (texture->id == id && texture->image != NULL) {
 
         Vehicle* veh = malloc(sizeof(Vehicle));
