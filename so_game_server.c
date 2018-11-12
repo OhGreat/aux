@@ -263,21 +263,14 @@ void* wup_sender(void* arg) {
         printf("n connected clients:%d\n",n_clients);
         client = (Client_info*) client_list->first;
         printf("wup size = %d\n", args->wup->num_vehicles);
-        bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) args->wup);
-        memcpy(buffer, &bytes_to_send, HEADER_SIZE);
-        bytes_to_send += HEADER_SIZE;
-
+        bytes_to_send = Packet_serialize(buffer, (PacketHeader*) args->wup);
+        printf("bytes serialized: %d\n", bytes_to_send);
         while (i < n_clients) {
 
             client_addr.sin_addr.s_addr = client->client_addr->sin_addr.s_addr;
-            bytes_sent = 0;
-            while (bytes_sent < bytes_to_send)
-            {
-              ret = sendto(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-              if (ret == -1 && errno == EINTR) continue;
-              ERROR_HELPER(ret, "Could not send wup to client\n");
-              bytes_sent += ret;
-            }
+
+            bytes_sent = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+            bytes_sent = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
 
             if (DEBUG) printf("wup sent to: %d\n", client->id);
             client = (Client_info*) client->list.next;

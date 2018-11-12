@@ -26,15 +26,12 @@ void* server_connection_handler(void* arg)
     client_id = args->tcp_socket_desc;
 
     //sending id
-    bytes_to_read = message_size_getter(tcp_socket_desc, HEADER_SIZE);
+    bytes_read = recv(tcp_socket_desc, &bytes_to_read, sizeof(int), MSG_WAITALL);
+    printf("bytes_read [packet_size]: %d", bytes_read);
+    bytes_read = recv(tcp_socket_desc, buffer, bytes_to_read, MSG_WAITALL);
+    printf("bytes_read [packet_data]: %d", bytes_read);
     bytes_read = 0;
-    while (bytes_read < bytes_to_read)
-    {
-        ret = recv(tcp_socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, 0);
-        if (ret == -1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Could not read id packet from client");
-        bytes_read += ret;
-    }
+
     IdPacket* id_packet = (IdPacket*) Packet_deserialize(buffer, bytes_read);
     if (DEBUG && id_packet->id == -1) printf("id request received from socket: %d\n", tcp_socket_desc);
 
@@ -146,8 +143,8 @@ void* server_connection_handler(void* arg)
     if (DEBUG) printf("Now receiving vehicle updates from client: %d\n",client_id);
     while (1)
     {
-        while (1) {}
-        bytes_to_read = message_size_getter(args->cl_up_recv_sock, HEADER_SIZE);
+
+        bytes_read = recvfrom(args->cl_up_recv_sock, &bytes_to_read, HEADER_SIZE, MSG_WAITALL, (struct sockaddr*) cl_up_client_addr, (socklen_t*) sizeof(struct sockaddr_in*));
         if (bytes_to_read == 0)
         {
             sem = sem_open(WUP_SEM, 0);
@@ -166,13 +163,8 @@ void* server_connection_handler(void* arg)
         }
         bytes_read = 0;
         int sem_value;
-        while (bytes_read < bytes_to_read)
-        {
-          ret = recv(args->cl_up_recv_sock, buffer+bytes_read, bytes_to_read-bytes_read, 0);
-          if (ret == -1 && errno == EINTR) continue;
-          ERROR_HELPER(ret, "Cannot read cl_up\n");
-          bytes_read += ret;
-        }
+
+        bytes_read = recvfrom(args->cl_up_recv_sock, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) cl_up_client_addr, (socklen_t*) sizeof(struct sockaddr_in*));
         VehicleUpdatePacket* vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read); //ERROR??
         if (vup->id == client_id) {
 
@@ -189,7 +181,7 @@ void* server_connection_handler(void* arg)
             cl_up->theta = cl_up->theta;
             //ret = sem_post(sem);
             //ERROR_HELPER(ret, "Cannot post sem after reading cl_up\n");
-            if (DEBUG) printf("Updated vehicle: %d on %f\n", client_id, args->world->dt);
+            if (DEBUG) printf("Updated vehicle: %d on x:%f, y: %f\n", client_id, cl_up->x, cl_up->y);
         }
     }
 }

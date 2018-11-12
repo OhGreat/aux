@@ -19,6 +19,7 @@
 #include "error_helper.h"
 #include "client_common.h"
 #include "common.c"
+#include <assert.h>
 
 
 int window;
@@ -64,17 +65,12 @@ int main(int argc, char **argv) {
   id_packet->id = -1;
   id_packet->header.type = 0x1;
   id_packet->header.size = sizeof(id_packet);
-  bytes_to_send = Packet_serialize( buffer+HEADER_SIZE, (PacketHeader*) id_packet);
-  memcpy(buffer, &bytes_to_send, HEADER_SIZE);
-  bytes_to_send += HEADER_SIZE;
-  bytes_sent = 0;
-  while (bytes_sent < bytes_to_send)
-  {
-      ret = send(main_socket_desc, buffer + bytes_sent, bytes_to_send - bytes_sent, 0);
-      if (ret == -1 && errno == EINTR) continue;
-      ERROR_HELPER(ret, "Cannot request id from server\n");
-      bytes_sent += ret;
-  }
+  bytes_to_send = Packet_serialize( buffer, (PacketHeader*) id_packet);
+
+  bytes_sent = send(main_socket_desc, &bytes_to_send, sizeof(int), 0);
+  printf("bytes_sent [packet_size]: %d", bytes_sent);
+  bytes_sent = send(main_socket_desc, buffer, bytes_to_send, 0);
+  printf("bytes_sent [packet_data]: %d", bytes_sent);
   if (DEBUG) printf("id request sent succesfully\n");
 
   //receiving id from server
@@ -207,15 +203,12 @@ void* wup_receiver (void* arg)
     while (1)
     {
         bytes_read = 0;
-        bytes_to_read = message_size_getter(socket_desc, HEADER_SIZE);
-        while (bytes_read < bytes_to_read)
-        {
-            ret = recv(socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, 0);
-            if (ret == -1 && errno == EINTR) continue;
-            ERROR_HELPER(ret, "Could not read from socket in wup recv\n");
-            bytes_read += ret;
-        }
-        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_read); // ERROR?
+        ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
+        ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
+        printf("byte read = %d\n", ret);
+
+        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_read);
+        assert(wup && "invalid wup");
         update_vehs = wup->num_vehicles;
         for (i=0; i<update_vehs; i++)
         {
@@ -329,18 +322,12 @@ void* client_updater_for_server(void* arg)
         veh_up->translational_force = args->veh->translational_force_update;
         veh_up->header.type = 0x7;
         veh_up->header.size = sizeof(veh_up);
-        bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) veh_up);
-        memcpy(buffer, &bytes_to_send, HEADER_SIZE);
-        bytes_to_send += HEADER_SIZE;
-        bytes_sent = 0;
-        while(bytes_sent < bytes_to_send)
-        {
-            ret = sendto(socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
-            if (ret == -1 && errno == EINTR) continue;
-            ERROR_HELPER(ret, "Could not send client update to server!\n");
-            bytes_sent += ret;
-        }
-        if (DEBUG) printf("sent client update packet to server\n");
+        bytes_to_send = Packet_serialize(buffer, (PacketHeader*) veh_up);
+
+        bytes_sent = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+        bytes_sent = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+
+        if (DEBUG) printf("sent client update [%d bytes] packet to server\n", bytes_sent);
         usleep(50000);
     }
 }
