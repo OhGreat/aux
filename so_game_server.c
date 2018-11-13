@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <fcntl.h>
 #include <semaphore.h>
+#include <arpa/inet.h>
 
 #include "server_common.h"
 #include "image.h"
@@ -257,6 +258,7 @@ void* wup_sender(void* arg) {
     int n_clients;
     Client_info* client;
 
+    char addr_str[INET6_ADDRSTRLEN];
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
     ERROR_HELPER(socket_desc, "Could not create socket to send wup \n");
@@ -282,7 +284,9 @@ void* wup_sender(void* arg) {
             ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
             ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
 
-            if (DEBUG) printf("wup sent to: %d\n", client->id);
+
+            inet_ntop(AF_INET, &(client_addr.sin_addr.s_addr), addr_str, sizeof(addr_str));
+            if (DEBUG) printf("wup sent to: %d addr: %s\n", client->id, addr_str);
             client = (Client_info*) client->list.next;
             i++;
 
