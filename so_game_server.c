@@ -274,9 +274,7 @@ void* wup_sender(void* arg) {
         n_clients = client_list->size;
         printf("n connected clients:%d\n",n_clients);
         client = (Client_info*) client_list->first;
-        printf("wup size = %d\n", args->wup->num_vehicles);
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) args->wup);
-        printf("bytes serialized: %d\n", bytes_to_send);
         while (i < n_clients) {
 
             client_addr.sin_addr.s_addr = client->client_addr->sin_addr.s_addr;
