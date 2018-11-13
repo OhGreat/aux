@@ -334,6 +334,7 @@ void* texture_request_handler(void* arg) {
     vehicle = World_getVehicle(args->world, text_req->id);
     text_req->image = vehicle->texture;
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
+    ret = sendto(socket_desc, &bytes_to_send, sizeof(int), 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
     ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
     ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
     printf("texture: %d sent to client!\n", text_req->id);
