@@ -18,6 +18,7 @@ void sem_cleanup(void);
 void* wup_sender(void* arg);
 void* texture_request_handler(void* arg);
 void wup_cl_remove(WorldUpdatePacket* wup, int client_id);
+void* cl_up_handler (void* arg);
 
 typedef struct {
     Image* map_texture;
@@ -42,6 +43,8 @@ typedef struct {
     ListItem list;
     int id;
     struct sockaddr_in* client_addr;
+    Vehicle* veh;
+    ClientUpdate* cl_up;
 } Client_info;
 
 typedef struct {
@@ -53,3 +56,10 @@ typedef struct {
     int socket_desc;
     World* world;
 } texture_handler_args;
+
+typedef struct {
+    WorldUpdatePacket* wup;
+    ListHead* client_list;
+    World* world;
+    int cl_up_socket;
+} cl_up_args;

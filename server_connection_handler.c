@@ -21,7 +21,6 @@ void* server_connection_handler(void* arg)
     char buffer[1024*1024*5];
     connection_handler_args* args = (connection_handler_args*) arg;
     tcp_socket_desc = args->tcp_socket_desc;
-    struct sockaddr_in* cl_up_client_addr = args->cl_up_client_addr;
 
     client_id = args->tcp_socket_desc;
 
@@ -113,7 +112,7 @@ void* server_connection_handler(void* arg)
     client->client_addr = args->client_addr;
     Vehicle* veh = (Vehicle*) malloc(sizeof(Vehicle));
     Vehicle_init(veh, args->world, client_id, texture_packet->image);
-
+    client->veh = veh;
     if (DEBUG) printf("Logging client into game...\n");
     sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(sem);
@@ -129,79 +128,12 @@ void* server_connection_handler(void* arg)
     cl_up->x = veh->x;
     cl_up->y = veh->y;
     cl_up->theta = veh->theta;
-
+    client->cl_up = cl_up;
     ret = sem_post(sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
     //ret = sem_close(sem);
     //ERROR_HELPER(ret, "Could not close wup_sem\n");
     if (DEBUG) printf("Client: %d logged in successfully\n", client_id);
 
-    //keep receiving vehicle updates from client
-
-    if (DEBUG) printf("Now receiving vehicle updates from client: %d\n",client_id);
-    while (1)
-    {
-
-        bytes_read = recvfrom(args->cl_up_recv_sock, &bytes_to_read, HEADER_SIZE, MSG_WAITALL, (struct sockaddr*) cl_up_client_addr, (socklen_t*) sizeof(struct sockaddr_in*));
-        printf("VEH UP (%d): %d and to read: %d\n", client_id, bytes_read, bytes_to_read);
-
-        if (bytes_to_read == 0)
-        {
-            sem = sem_open(WUP_SEM, 0);
-            ERROR_HELPER(ret, "Could not open wup sem to log out client\n");
-            ret = sem_wait(sem);
-            ERROR_HELPER(ret, "Could not wait wup sem to log out client\n");
-            List_detach(args->client_list, (ListItem*) client);
-            wup_cl_remove(args->wup, client_id);
-            ret = sem_post(sem);
-            ERROR_HELPER(ret, "Could not post wup sem to log out client\n");
-            ret = sem_close(sem);
-            ERROR_HELPER(ret, "Could not close wup sem to log out client\n");
-            ret = sem_close(sem);
-            ERROR_HELPER(ret, "Could not close wup_sem\n");
-            pthread_exit(NULL);
-        }
-        bytes_read = 0;
-        int sem_value;
-
-        bytes_read = recvfrom(args->cl_up_recv_sock, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) cl_up_client_addr, (socklen_t*) sizeof(struct sockaddr_in*));
-        VehicleUpdatePacket* vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read); //ERROR??
-        if (vup->id == client_id) {
-
-            //ret = sem_wait(sem);
-            //ERROR_HELPER(ret, "Could not wait wup sem to update client position\n");
-            ERROR_HELPER(ret, "Could not read value of wup sem\n");
-            veh->translational_force_update = vup->translational_force;
-            veh->rotational_force_update = vup->rotational_force;
-            Vehicle_update(veh, args->world->dt);
-            ret = sem_getvalue(sem, &sem_value);
-            if (sem_value != 1) continue;
-            cl_up->x = veh->x;
-            cl_up->y = veh->y;
-            cl_up->theta = cl_up->theta;
-            //ret = sem_post(sem);
-            //ERROR_HELPER(ret, "Cannot post sem after reading cl_up\n");
-            if (DEBUG) printf("Updated vehicle: %d on x:%f, y: %f\n", client_id, cl_up->x, cl_up->y);
-        }
-    }
-}
-
-
-void wup_cl_remove(WorldUpdatePacket* wup, int client_id)
-{
-    int i, j=0, n_veh= wup->num_vehicles;
-    WorldUpdatePacket* new = malloc(sizeof(WorldUpdatePacket));
-    new->num_vehicles = n_veh-1;
-    new->updates = malloc(sizeof(ClientUpdate)*new->num_vehicles);
-    for (i=0;i<n_veh;i++)
-    {
-        if (wup->updates[i].id != client_id)
-        {
-            new->updates[j] = wup->updates[i];
-            j++;
-        }
-    }
-    free(wup->updates);
-    wup->updates = new->updates;
-    wup->num_vehicles = n_veh-1;
+    while(1){}
 }

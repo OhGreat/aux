@@ -66,11 +66,8 @@ int main(int argc, char **argv) {
   id_packet->header.type = 0x1;
   id_packet->header.size = sizeof(id_packet);
   bytes_to_send = Packet_serialize( buffer, (PacketHeader*) id_packet);
-
   bytes_sent = send(main_socket_desc, &bytes_to_send, sizeof(int), 0);
-  printf("bytes_sent [packet_size]: %d", bytes_sent);
   bytes_sent = send(main_socket_desc, buffer, bytes_to_send, 0);
-  printf("bytes_sent [packet_data]: %d", bytes_sent);
   if (DEBUG) printf("id request sent succesfully\n");
 
   //receiving id from server
@@ -312,7 +309,7 @@ void* client_updater_for_server(void* arg)
         veh_up->header.size = sizeof(veh_up);
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) veh_up);
 
-        bytes_sent = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+        //bytes_sent = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
         bytes_sent = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
 
         if (DEBUG) printf("sent client update [%d bytes] packet to server\n", bytes_sent);
@@ -323,7 +320,7 @@ void* client_updater_for_server(void* arg)
 void quit_handler()
 {
     int ret, socket_desc, bytes_sent, bytes_to_send;
-    char buffer[] = {0,0,0,0};
+    char buffer[] = {0};
     struct sockaddr_in server_addr;
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);

@@ -134,6 +134,19 @@ int main(int argc, char **argv) {
   ERROR_HELPER(ret, "Error binding address to socket in server vehicle update\n");
   //**************************************************************************
 
+  //thread to handle client updates*******************************************
+  cl_up_args* cl_args = malloc(sizeof(cl_up_args));
+  cl_args->wup = wup;
+  cl_args->client_list = client_list;
+  cl_args->world = world;
+  cl_args->cl_up_socket = cl_up_recv_sock;
+  pthread_t cl_thread;
+  ret = pthread_create(&cl_thread, NULL, cl_up_handler, (void*) cl_args);
+  PTHREAD_ERROR_HELPER(ret, "Could not create cl_up handler thread\n");
+  ret = pthread_detach(cl_thread);
+  PTHREAD_ERROR_HELPER(ret, "Could not detach cl_up handler thread");
+  if (DEBUG) printf("Spawned thread to handle cl_up from clients\n");
+
   //creating texture handler socket and thread********************************
   int texture_handler_socket;
   struct sockaddr_in texture_addr;
@@ -291,7 +304,8 @@ void* wup_sender(void* arg) {
     }
 }
 
-//function to handle textre requests**********************************************
+
+//function to handle texture requests**********************************************
 void* texture_request_handler(void* arg) {
   int ret = 0;
   int read_bytes, bytes_to_send, bytes_to_read, socket_desc;
@@ -324,6 +338,90 @@ void* texture_request_handler(void* arg) {
     Packet_free((PacketHeader*) text_req);
 
   }
+}
+
+
+void* cl_up_handler (void* arg) {
+  int ret;
+  char buffer[1024*1024*5];
+  cl_up_args* args = (cl_up_args*) arg;
+  struct sockaddr_in client_addr;
+  socklen_t addrlen = sizeof(client_addr);
+  VehicleUpdatePacket* vup = malloc( sizeof(VehicleUpdatePacket));
+  vup->header.size = sizeof(VehicleUpdatePacket);
+  vup->header.type = 0x7;
+  int bytes_to_read = Packet_serialize(buffer, (PacketHeader*) vup);
+  printf("CL TO READ: %d\n", bytes_to_read);
+  Packet_free((PacketHeader*) vup);
+  Vehicle* veh;
+  ClientUpdate* cl_up;
+  int sem_val = 0;
+  //sem_t* sem;
+  while(1) {
+      ret = recvfrom(args->cl_up_socket, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &client_addr, &addrlen);
+      ERROR_HELPER(ret, "Error reciving cl_up\n");
+      if (DEBUG) printf("received cl_up!!\n");
+      printf("CL TO READ: %d\n", bytes_to_read);
+/*
+
+      if (buffer[0] == '0') {
+        sem = sem_open(WUP_SEM, 0);
+        ERROR_HELPER(ret, "Could not open wup sem to log out client\n");
+        ret = sem_wait(sem);
+        ERROR_HELPER(ret, "Could not wait wup sem to log out client\n");
+        List_detach(args->client_list, (ListItem*) client);
+        wup_cl_remove(args->wup, buffer[1]);
+        ret = sem_post(sem);
+        ERROR_HELPER(ret, "Could not post wup sem to log out client\n");
+        ret = sem_close(sem);
+        ERROR_HELPER(ret, "Could not close wup sem to log out client\n");
+        ret = sem_close(sem);
+        ERROR_HELPER(ret, "Could not close wup_sem\n");
+      }
+*/
+      vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
+
+      //find client and update its vehicles
+      Client_info* client = (Client_info*) args->client_list->first;
+      while (client != NULL && client->client_addr->sin_addr.s_addr != client_addr.sin_addr.s_addr) {
+        client = (Client_info*) client->list.next;
+      }
+      if (client != NULL) {
+          cl_up = client->cl_up;
+          veh = client->veh;
+          veh->translational_force_update = vup->translational_force;
+          veh->rotational_force_update = vup->rotational_force;
+          Vehicle_update(veh, args->world->dt);
+          while (sem_val == 0) {
+            sem_getvalue(wup_sem, &sem_val);
+          }
+          cl_up->x = veh->x;
+          cl_up->y = veh->y;
+          cl_up->theta = veh->theta;
+          if (DEBUG) printf("Updated vehicle: %d on x:%f, y: %f\n", cl_up->id, cl_up->x, cl_up->y);
+      }
+    }
+  }
+
+
+
+void wup_cl_remove(WorldUpdatePacket* wup, int client_id)
+{
+    int i, j=0, n_veh= wup->num_vehicles;
+    WorldUpdatePacket* new = malloc(sizeof(WorldUpdatePacket));
+    new->num_vehicles = n_veh-1;
+    new->updates = malloc(sizeof(ClientUpdate)*new->num_vehicles);
+    for (i=0;i<n_veh;i++)
+    {
+        if (wup->updates[i].id != client_id)
+        {
+            new->updates[j] = wup->updates[i];
+            j++;
+        }
+    }
+    free(wup->updates);
+    wup->updates = new->updates;
+    wup->num_vehicles = n_veh-1;
 }
 
 
