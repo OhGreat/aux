@@ -313,11 +313,13 @@ void* texture_request_handler(void* arg) {
   int read_bytes, bytes_to_send, bytes_to_read, socket_desc;
   struct sockaddr_in client_addr ={0};
   int sockaddr_len = sizeof(struct sockaddr_in);
-  char buffer[1024*1024];
+  char buffer[1024*1024*5];
   texture_handler_args* args = (texture_handler_args*) arg;
   socket_desc = args->socket_desc;
   Vehicle* vehicle;
   bytes_to_read = sizeof(ImagePacket);
+
+
 
 
   while(1) {
@@ -332,7 +334,9 @@ void* texture_request_handler(void* arg) {
         ERROR_HELPER(-1, "Received wrong packet, waiting for texture request\n");
 
     vehicle = World_getVehicle(args->world, text_req->id);
+    text_req->header.type = 0x4;
     text_req->image = vehicle->texture;
+    text_req->header.size = sizeof(text_req);
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
     ret = sendto(socket_desc, &bytes_to_send, sizeof(int), 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
     ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));

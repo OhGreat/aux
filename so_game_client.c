@@ -103,7 +103,7 @@ int main(int argc, char **argv) {
   ImagePacket* texture_packet = malloc(sizeof(ImagePacket));
   texture_packet->id = my_id;
   texture_packet->image = my_texture;
-  texture_packet->header.type = 0x2;
+  texture_packet->header.type = 0x4;
   texture_packet->header.size = sizeof(texture_packet);
   bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) texture_packet);
   memcpy(buffer, &bytes_to_send, HEADER_SIZE);
@@ -216,21 +216,22 @@ void* wup_receiver (void* arg)
         bytes_read = 0;
         ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
         ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
-        printf("byte read = %d\n", ret);
+        printf("bytes read = %d\n", ret);
 
-        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_read);
-        assert(wup && "invalid wup");
+        wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
+
         update_vehs = wup->num_vehicles;
         for (i=0; i<update_vehs; i++)
         {
-            if (wup->updates[i].id != args->my_id &&
-                (current_veh = World_getVehicle(args->world, wup->updates[i].id)) != 0)
+            current_veh = World_getVehicle(args->world, wup->updates[i].id);
+            if (current_veh != 0 && current_veh->id != args->my_id)
             {
                 current_veh->x = wup->updates[i].x;
                 current_veh->y = wup->updates[i].y;
                 current_veh->theta = wup->updates[i].theta;
+                if (DEBUG) printf("Updated veh n: %d . . . . . . . . . . .\n", current_veh->id);
             }
-            else if (wup->updates[i].id != args->my_id)
+            else if (current_veh == 0 && wup->updates[i].id != args->my_id)
             {
               unknown_veh_handler(args->texture_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
             }
@@ -283,6 +284,7 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
 
     Packet_free( (PacketHeader*) texture);
     texture = (ImagePacket*) Packet_deserialize(buffer, bytes_to_read);
+    printf("REQUESTING: N.%d.... gotten:%d...............\n", id, texture->id);
     if (texture->id == id && texture->image != NULL) {
 
         Vehicle* veh = malloc(sizeof(Vehicle));
@@ -292,8 +294,12 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
         veh->y = cl_up.y;
         veh->theta = cl_up.theta;
         if (DEBUG) printf("texture of veh n. %d received succesfully\n", id);
+        World_update(world);
     }
-    else Packet_free((PacketHeader*) texture);
+    else {
+      Packet_free((PacketHeader*) texture);
+      if (DEBUG) printf("texture of veh n: %d is NULL\n", id);
+    }
 
 }
 

@@ -60,7 +60,7 @@ void* server_connection_handler(void* arg)
         bytes_read += ret;
     }
     ImagePacket* texture_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
-    if (texture_packet->id != client_id || texture_packet->header.type != 0x2)
+    if (texture_packet->id != client_id || texture_packet->header.type != 0x4)
         ERROR_HELPER(-1, "Id or packet type not corresponding to client, closing connection\n");
     if (DEBUG) printf("Client: %d texture received successfully\n", client_id);
 
