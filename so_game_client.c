@@ -269,7 +269,6 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
     texture->header.size = sizeof(ImagePacket);
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture);
 
-    ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
     ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
 
     if (DEBUG) printf("texture request of veh n. %d sent to server\n", id);

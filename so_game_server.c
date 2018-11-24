@@ -317,11 +317,11 @@ void* texture_request_handler(void* arg) {
   texture_handler_args* args = (texture_handler_args*) arg;
   socket_desc = args->socket_desc;
   Vehicle* vehicle;
+  bytes_to_read = sizeof(ImagePacket);
 
 
   while(1) {
-    read_bytes = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
-    printf("TEXTURE recv bytes: %d", bytes_to_read);
+
     read_bytes = recvfrom(socket_desc, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &client_addr, (socklen_t*) &sockaddr_len );
     ERROR_HELPER(read_bytes, "Cannot receive vehicle update packet from client\n");
 
