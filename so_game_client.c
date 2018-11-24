@@ -49,6 +49,7 @@ int main(int argc, char **argv) {
   struct sockaddr_in server_addr = {0};
   global_server_addr = argv[1];
 
+  //main socket for client connection*****************************************
   main_socket_desc = socket(AF_INET, SOCK_STREAM, 0);
   ERROR_HELPER(main_socket_desc, "Could not create socket\n");
 
@@ -59,6 +60,18 @@ int main(int argc, char **argv) {
   ret = connect(main_socket_desc, (struct sockaddr*) &server_addr, sizeof(struct sockaddr_in));
   ERROR_HELPER(ret, "Could not enstamblish connection to server\n");
   if (DEBUG) fprintf(stderr, "Connected to server succesfully\n");
+
+  //socket to handle texture requests****************************************
+  int texture_socket;
+  struct sockaddr_in client_text_addr;
+  client_text_addr.sin_family = AF_INET;
+  client_text_addr.sin_port = htons(CLIENT_TEXTURE_HANDLER_PORT);
+  client_text_addr.sin_addr.s_addr = INADDR_ANY;
+
+  texture_socket = socket(AF_INET, SOCK_DGRAM, 0);
+  ret = bind(texture_socket, (struct sockaddr*) &client_text_addr, sizeof(client_text_addr));
+  ERROR_HELPER(ret, "Error binding texture handler port to socket\n");
+
 
   //requesting id to server
   IdPacket *id_packet = malloc(sizeof(IdPacket));
@@ -150,6 +163,7 @@ int main(int argc, char **argv) {
   thread_args->my_id = my_id;
   thread_args->world = &world;
   thread_args->server_addr = &server_addr;
+  thread_args->texture_socket = texture_socket;
   ret = pthread_create(&wup_receiver_thread, NULL, wup_receiver, thread_args);
   ERROR_HELPER(ret, "Could not create wup receiver thread\n");
   ret = pthread_detach(wup_receiver_thread);
@@ -218,7 +232,7 @@ void* wup_receiver (void* arg)
             }
             else if (wup->updates[i].id != args->my_id)
             {
-              unknown_veh_handler(args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
+              unknown_veh_handler(args->texture_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
             }
         }
         Vehicle* veh = (Vehicle*) args->vehicles.first;
@@ -235,24 +249,18 @@ void* wup_receiver (void* arg)
 
 
 //handles texture requests and adds vehicle to world
-void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientUpdate cl_up)
+void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, World* world, ClientUpdate cl_up)
 {
-    int ret, socket_desc, bytes_to_read, bytes_to_send;
+    int ret, bytes_to_read, bytes_to_send;
     char buffer[1024*1024*5];
-    struct sockaddr_in server_addr, client_addr;
+    struct sockaddr_in server_addr;
     ImagePacket* texture;
 
-    client_addr.sin_family = AF_INET;
-    client_addr.sin_port = htons(CLIENT_TEXTURE_HANDLER_PORT);
-    client_addr.sin_addr.s_addr = INADDR_ANY;
 
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_TEXTURE_HANDLER_PORT);
     server_addr.sin_addr.s_addr = addr->sin_addr.s_addr;
 
-    socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
-    ret = bind(socket_desc, (struct sockaddr*) &client_addr, sizeof(client_addr));
-    ERROR_HELPER(ret, "Error binding texture handler port to socket");
 
     texture = malloc(sizeof(ImagePacket));
     texture->id = id;
@@ -268,6 +276,7 @@ void unknown_veh_handler(struct sockaddr_in* addr, int id, World* world, ClientU
 
     ret = recvfrom(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL, (struct sockaddr*) &server_addr, (socklen_t*) sizeof(&server_addr));
     ret = recvfrom(socket_desc, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &server_addr, (socklen_t*) sizeof(&server_addr));
+    ERROR_HELPER(ret, "Problem with ret in texture receiver\n");
 
 
     Packet_free( (PacketHeader*) texture);
