@@ -273,8 +273,8 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
 
     if (DEBUG) printf("texture request of veh n. %d sent to server\n", id);
 
-    ret = recvfrom(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL, (struct sockaddr*) &server_addr, (socklen_t*) sizeof(&server_addr));
-    ret = recvfrom(socket_desc, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &server_addr, (socklen_t*) sizeof(&server_addr));
+    ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
+    ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
     ERROR_HELPER(ret, "Problem with ret in texture receiver\n");
 
 
