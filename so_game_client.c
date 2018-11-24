@@ -245,6 +245,7 @@ void* wup_receiver (void* arg)
           if (veh->id != wup->updates[i].id ) World_detachVehicle(args->world, veh);
         }
         */
+        World_update(args->world);
         if (DEBUG) printf("wup read succesfully\n");
     }
 }
@@ -290,7 +291,6 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
         veh->x = cl_up.x;
         veh->y = cl_up.y;
         veh->theta = cl_up.theta;
-        World_update(world);
         if (DEBUG) printf("texture of veh n. %d received succesfully\n", id);
     }
     else Packet_free((PacketHeader*) texture);
