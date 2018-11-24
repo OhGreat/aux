@@ -235,6 +235,7 @@ void* wup_receiver (void* arg)
               unknown_veh_handler(args->texture_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
             }
         }
+        /*
         Vehicle* veh = (Vehicle*) args->vehicles.first;
         int j;
         world_vehs = args->world->vehicles.size;
@@ -243,6 +244,7 @@ void* wup_receiver (void* arg)
           }
           if (veh->id != wup->updates[i].id ) World_detachVehicle(args->world, veh);
         }
+        */
         if (DEBUG) printf("wup read succesfully\n");
     }
 }
@@ -288,9 +290,11 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
         veh->x = cl_up.x;
         veh->y = cl_up.y;
         veh->theta = cl_up.theta;
+        World_update(world);
+        if (DEBUG) printf("texture of veh n. %d received succesfully\n", id);
     }
     else Packet_free((PacketHeader*) texture);
-    if (DEBUG) printf("texture of veh n. %d received succesfully\n", id);
+
 }
 
 void* client_updater_for_server(void* arg)
