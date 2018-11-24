@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
   thread_args->my_id = my_id;
   thread_args->world = &world;
   thread_args->server_addr = &server_addr;
-  thread_args->texture_socket = texture_socket;
+  thread_args->tcp_socket = main_socket_desc;
   ret = pthread_create(&wup_receiver_thread, NULL, wup_receiver, thread_args);
   ERROR_HELPER(ret, "Could not create wup receiver thread\n");
   ret = pthread_detach(wup_receiver_thread);
@@ -233,7 +233,7 @@ void* wup_receiver (void* arg)
             }
             else if (current_veh == 0 && wup->updates[i].id != args->my_id)
             {
-              unknown_veh_handler(args->texture_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
+              unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
             }
         }
         /*
@@ -273,7 +273,7 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
     texture->header.size = sizeof(ImagePacket);
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture);
 
-    ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+    ret = send(socket_desc, buffer, bytes_to_send, 0);
 
     if (DEBUG) printf("texture request of veh n. %d sent to server\n", id);
 

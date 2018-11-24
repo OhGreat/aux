@@ -135,5 +135,38 @@ void* server_connection_handler(void* arg)
     //ERROR_HELPER(ret, "Could not close wup_sem\n");
     if (DEBUG) printf("Client: %d logged in successfully\n", client_id);
 
-    while(1){}
+
+    //send back textures of other clients when this cl requests it
+    Vehicle* vehicle;
+    bytes_to_read = sizeof(ImagePacket);
+    while(1){
+
+      bytes_read = recv(tcp_socket_desc, buffer, bytes_to_read, MSG_WAITALL);
+      ERROR_HELPER(bytes_read, "Cannot receive text req packet packet from client\n");
+
+      printf("Texture request received from cl: %d\n", client_id);
+
+      ImagePacket* text_req = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
+      if (text_req->header.type != 0x2 && text_req->id == 0)
+          ERROR_HELPER(-1, "Received wrong packet, waiting for texture request\n");
+
+      vehicle = World_getVehicle(args->world, text_req->id);
+      text_req->header.type = 0x4;
+      text_req->image = vehicle->texture;
+      text_req->header.size = sizeof(text_req);
+      bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
+      printf("TEXTURE BYTES TO SEND: %d\n", bytes_to_send);
+      ret = send(tcp_socket_desc, &bytes_to_send, sizeof(int), 0);
+      bytes_sent = 0;
+      while (bytes_sent < bytes_to_send) {
+          ret = send(tcp_socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0);
+          if (errno == EINTR) continue;
+          ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
+          bytes_sent += ret;
+      }
+
+      printf("texture: %d sent to client!\n", text_req->id);
+      Packet_free((PacketHeader*) text_req);
+
+    }
 }

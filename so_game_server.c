@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
 
   ret = bind(texture_handler_socket, (struct sockaddr*) &texture_addr, sizeof(texture_addr));
   ERROR_HELPER(ret, "Error binding address to texture handler socket\n");
-
+/*
   //creating thread to handle texture requests
   pthread_t texture_handler_thread;
   texture_handler_args* texture_args = malloc(sizeof(texture_handler_args));
@@ -171,8 +171,8 @@ int main(int argc, char **argv) {
   ret = pthread_detach(texture_handler_thread);
   PTHREAD_ERROR_HELPER(ret, "Could not detach texture handler thread");
   if (DEBUG) printf("Spawned thread to handle texture requests from clients\n");
-  //****************************************************************************
-
+  ****************************************************************************
+*/
   // creating tcp_socket and accepting new connections to be handled by a thread
   int tcp_socket_desc, tcp_client_desc;
   struct sockaddr_in tcp_server_addr = {0};
@@ -305,19 +305,19 @@ void* wup_sender(void* arg) {
           if (DEBUG) printf("successfully sent wup to all clients\n");
     }
 }
-
+/*
 
 //function to handle texture requests**********************************************
 void* texture_request_handler(void* arg) {
   int ret = 0;
-  int read_bytes, bytes_to_send, bytes_to_read, socket_desc;
+  int read_bytes, bytes_to_send, bytes_to_read, bytes_sent, socket_desc;
   struct sockaddr_in client_addr ={0};
   int sockaddr_len = sizeof(struct sockaddr_in);
   char buffer[1024*1024*5];
   texture_handler_args* args = (texture_handler_args*) arg;
   socket_desc = args->socket_desc;
-  Vehicle* vehicle;
-  bytes_to_read = sizeof(ImagePacket);
+
+
 
 
 
@@ -338,16 +338,22 @@ void* texture_request_handler(void* arg) {
     text_req->image = vehicle->texture;
     text_req->header.size = sizeof(text_req);
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
+    printf("TEXTURE BYTES TO SEND: %d\n", bytes_to_send);
     ret = sendto(socket_desc, &bytes_to_send, sizeof(int), 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-    ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-    ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
+    bytes_sent = 0;
+    while (bytes_sent < bytes_to_send) {
+        ret = sendto(socket_desc, buffer+bytes_sent, 1, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+        if (errno == EINTR) continue;
+        ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
+        bytes_sent += ret;
+    }
+
     printf("texture: %d sent to client!\n", text_req->id);
     Packet_free((PacketHeader*) text_req);
 
   }
 }
-
-
+*/
 void* cl_up_handler (void* arg) {
   int ret;
   char buffer[1024*1024*5];

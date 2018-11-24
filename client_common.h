@@ -18,7 +18,7 @@ typedef struct {
   int my_id;
   World* world;
   struct sockaddr_in* server_addr;
-  int texture_socket;
+  int tcp_socket;
 } wup_receiver_args;
 
 typedef struct {
