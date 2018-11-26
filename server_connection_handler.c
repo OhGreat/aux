@@ -140,11 +140,13 @@ void* server_connection_handler(void* arg)
     Vehicle* vehicle;
     bytes_to_read = sizeof(ImagePacket);
     while(1){
-
-      bytes_read = recv(tcp_socket_desc, buffer, bytes_to_read, MSG_WAITALL);
-      ERROR_HELPER(bytes_read, "Cannot receive text req packet packet from client\n");
-
-      printf("Texture request received from cl: %d\n", client_id);
+      bytes_read = 0;
+      while(bytes_read < bytes_to_read) {
+          bytes_read = recv(tcp_socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, MSG_WAITALL);
+          if (errno == EINTR) continue;
+          ERROR_HELPER(bytes_read, "Cannot receive text req packet packet from client\n");
+      }
+      printf("Texture request received from cl: %d bytes read: %d\n", client_id, bytes_read);
 
       ImagePacket* text_req = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
       if (text_req->header.type != 0x2 && text_req->id == 0)

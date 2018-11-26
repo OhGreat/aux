@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
   bytes_read = 0;
   while (bytes_read < bytes_to_read)
   {
-      ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - bytes_read, 0);
+      ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - bytes_read, MSG_WAITALL);
       if (ret == -1 && errno == EINTR) continue;
      ERROR_HELPER(ret, "Cannot receive id from server\n");
      bytes_read += ret;
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
   bytes_read = 0;
   while (bytes_read < bytes_to_read)
   {
-      ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - bytes_read, 0);
+      ret = recv(main_socket_desc, buffer+bytes_read, bytes_to_read - bytes_read, MSG_WAITALL);
       if (ret == -1 && errno == EINTR) continue;
       ERROR_HELPER(ret, "Cannot receive id from server\n");
       bytes_read += ret;
@@ -156,6 +156,17 @@ int main(int argc, char **argv) {
   Vehicle_init(vehicle, &world, my_id, my_texture);
   World_addVehicle(&world, vehicle);
 
+  //thread to send cl_up to server
+  pthread_t cl_up_thread;
+  cl_up_args* cl_args = malloc(sizeof(cl_up_args));
+  cl_args->veh = vehicle;
+  cl_args->server_addr = server_addr;
+  ret = pthread_create(&cl_up_thread, NULL, client_updater_for_server, cl_args);
+  ERROR_HELPER(ret, "Could not create cl_up sender thread\n");
+  ret = pthread_detach(cl_up_thread);
+  ERROR_HELPER(ret, "Unable to detach cl_up sender thread\n");
+  if (DEBUG) printf("Created thread to send cl_up to server\n");
+
   //thread to handle wup
   pthread_t wup_receiver_thread;
   wup_receiver_args* thread_args = malloc(sizeof(wup_receiver_args));
@@ -170,16 +181,7 @@ int main(int argc, char **argv) {
   ERROR_HELPER(ret, "Unable to detach wup receiver thread\n");
   if (DEBUG) printf("Created thread to receive wup from server\n");
 
-  //thread to send cl_up to server
-  pthread_t cl_up_thread;
-  cl_up_args* cl_args = malloc(sizeof(cl_up_args));
-  cl_args->veh = vehicle;
-  cl_args->server_addr = server_addr;
-  ret = pthread_create(&cl_up_thread, NULL, client_updater_for_server, cl_args);
-  ERROR_HELPER(ret, "Could not create cl_up sender thread\n");
-  ret = pthread_detach(cl_up_thread);
-  ERROR_HELPER(ret, "Unable to detach cl_up sender thread\n");
-  if (DEBUG) printf("Created thread to send cl_up to server\n");
+
 
   //signal(SIGINT, quit_handler);
 
@@ -233,6 +235,7 @@ void* wup_receiver (void* arg)
             }
             else if (current_veh == 0 && wup->updates[i].id != args->my_id)
             {
+              if (DEBUG) printf("Time to request veh... :(\n");
               unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
             }
         }
@@ -298,7 +301,7 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
     }
     else {
       Packet_free((PacketHeader*) texture);
-      if (DEBUG) printf("texture of veh n: %d is NULL\n", id);
+      if (DEBUG) printf("texture of veh n: %d is NULL... aborted\n", id);
     }
 
 }
