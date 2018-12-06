@@ -138,17 +138,30 @@ void* server_connection_handler(void* arg)
 
     //send back textures of other clients when this cl requests it
     Vehicle* vehicle;
-    bytes_to_read = sizeof(ImagePacket);
+    ImagePacket* text_packet_size = malloc(sizeof(ImagePacket));
+    text_packet_size->header.type = 0x2;
+    text_packet_size->header.size = sizeof(text_packet_size);
+    bytes_to_read = Packet_serialize(buffer, (PacketHeader*) text_packet_size);
+    printf("IMAGE PACKET SIZE: %d..................\n", bytes_to_read);
+    char* quit_message = "quit";
+    int quit_len = sizeof(quit_message);
+
     while(1){
       bytes_read = 0;
+      bytes_read = recv(tcp_socket_desc, buffer, quit_len, MSG_WAITALL);
+      if (strncmp(quit_message, buffer, quit_len) == 0) {
+        wup_cl_remove(wup, client_id, args->client_list, client);
+        break;
+      }
       while(bytes_read < bytes_to_read) {
           bytes_read = recv(tcp_socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, MSG_WAITALL);
           if (errno == EINTR) continue;
           ERROR_HELPER(bytes_read, "Cannot receive text req packet packet from client\n");
       }
-      printf("Texture request received from cl: %d bytes read: %d\n", client_id, bytes_read);
+
 
       ImagePacket* text_req = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
+      printf("Texture request received from cl: %d (requesting: %d) bytes read: %d\n", client_id, text_req->id, bytes_read);
       if (text_req->header.type != 0x2 && text_req->id == 0)
           ERROR_HELPER(-1, "Received wrong packet, waiting for texture request\n");
 
@@ -171,4 +184,45 @@ void* server_connection_handler(void* arg)
       Packet_free((PacketHeader*) text_req);
 
     }
+
+}
+
+
+
+void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list, Client_info* client)
+{
+    int ret, i, j=0, n_veh= wup->num_vehicles;
+    WorldUpdatePacket* new = malloc(sizeof(WorldUpdatePacket));
+    new->num_vehicles = n_veh-1;
+    new->updates = malloc(sizeof(ClientUpdate)*new->num_vehicles);
+    for (i=0;i<n_veh;i++)
+    {
+        if (wup->updates[i].id != client_id)
+        {
+            new->updates[j] = wup->updates[i];
+            j++;
+        }
+    }
+    sem_t* client_list_sem = sem_open(CLIENT_LIST_SEM, 0);
+    ret = sem_wait(client_list_sem);
+    ERROR_HELPER(ret, "Cannot open client list semaphore\n");
+    sem_t* wup_sem = sem_open(WUP_SEM, 0);
+    ERROR_HELPER(ret, "Cannot open wup semaphore to send wup\n");
+    ret = sem_wait(wup_sem);
+    ERROR_HELPER(ret, "Cannot wait wup sem\n");
+
+    free(wup->updates);
+    wup->updates = new->updates;
+    wup->num_vehicles = n_veh-1;
+    List_detach(client_list, (ListItem*) client);
+
+    ret = sem_post(wup_sem);
+    ERROR_HELPER(ret, "Cannot post wup sem\n");
+    ret = sem_close(wup_sem);
+    ERROR_HELPER(ret, "Cannot close wup sem\n");
+    ret = sem_post(client_list_sem);
+    ERROR_HELPER(ret, "Cannot post client list semaphore\n");
+    ret = sem_close(client_list_sem);
+    if (DEBUG) printf("dc request received from cl: %d, disconnected sucessfully\n", client_id);
+
 }

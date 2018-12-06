@@ -375,23 +375,7 @@ void* cl_up_handler (void* arg) {
       ERROR_HELPER(ret, "Error reciving cl_up\n");
       if (DEBUG) printf("received cl_up!!\n");
       printf("CL TO READ: %d\n", bytes_to_read);
-/*
 
-      if (buffer[0] == '0') {
-        sem = sem_open(WUP_SEM, 0);
-        ERROR_HELPER(ret, "Could not open wup sem to log out client\n");
-        ret = sem_wait(sem);
-        ERROR_HELPER(ret, "Could not wait wup sem to log out client\n");
-        List_detach(args->client_list, (ListItem*) client);
-        wup_cl_remove(args->wup, buffer[1]);
-        ret = sem_post(sem);
-        ERROR_HELPER(ret, "Could not post wup sem to log out client\n");
-        ret = sem_close(sem);
-        ERROR_HELPER(ret, "Could not close wup sem to log out client\n");
-        ret = sem_close(sem);
-        ERROR_HELPER(ret, "Could not close wup_sem\n");
-      }
-*/
       vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
 
       //find client and update its vehicles
@@ -417,25 +401,6 @@ void* cl_up_handler (void* arg) {
   }
 
 
-
-void wup_cl_remove(WorldUpdatePacket* wup, int client_id)
-{
-    int i, j=0, n_veh= wup->num_vehicles;
-    WorldUpdatePacket* new = malloc(sizeof(WorldUpdatePacket));
-    new->num_vehicles = n_veh-1;
-    new->updates = malloc(sizeof(ClientUpdate)*new->num_vehicles);
-    for (i=0;i<n_veh;i++)
-    {
-        if (wup->updates[i].id != client_id)
-        {
-            new->updates[j] = wup->updates[i];
-            j++;
-        }
-    }
-    free(wup->updates);
-    wup->updates = new->updates;
-    wup->num_vehicles = n_veh-1;
-}
 
 
 //sem cleanup func

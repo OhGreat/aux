@@ -22,12 +22,13 @@
 #include <assert.h>
 
 
-int window;
+int window, halting_flag = 0;
 WorldViewer viewer;
 World world;
 Vehicle* vehicle; // The vehicle
 
 char* global_server_addr;
+int tcp_socket;
 
 int main(int argc, char **argv) {
   if (argc<3) {
@@ -61,17 +62,8 @@ int main(int argc, char **argv) {
   ERROR_HELPER(ret, "Could not enstamblish connection to server\n");
   if (DEBUG) fprintf(stderr, "Connected to server succesfully\n");
 
-  //socket to handle texture requests****************************************
-  int texture_socket;
-  struct sockaddr_in client_text_addr;
-  client_text_addr.sin_family = AF_INET;
-  client_text_addr.sin_port = htons(CLIENT_TEXTURE_HANDLER_PORT);
-  client_text_addr.sin_addr.s_addr = INADDR_ANY;
-
-  texture_socket = socket(AF_INET, SOCK_DGRAM, 0);
-  ret = bind(texture_socket, (struct sockaddr*) &client_text_addr, sizeof(client_text_addr));
-  ERROR_HELPER(ret, "Error binding texture handler port to socket\n");
-
+  tcp_socket = main_socket_desc;
+  signal(SIGINT, quit_handler);
 
   //requesting id to server
   IdPacket *id_packet = malloc(sizeof(IdPacket));
@@ -195,7 +187,7 @@ int main(int argc, char **argv) {
 //handles wup received from server and calls unknown_veh_handler when needed
 void* wup_receiver (void* arg)
 {
-    int ret, socket_desc, bytes_read, bytes_to_read;
+    int ret, socket_desc, bytes_to_read;
     struct sockaddr_in client_addr;
     char buffer[1024*1024*5];
     wup_receiver_args* args = (wup_receiver_args*) arg;
@@ -213,12 +205,11 @@ void* wup_receiver (void* arg)
     ERROR_HELPER( ret, "Error binding wup receiver port to socket\n");
 
     Vehicle* current_veh = (Vehicle*) args->vehicles.first;
-    while (1)
+    while (halting_flag == 0)
     {
-        bytes_read = 0;
         ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
         ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
-        printf("bytes read = %d\n", ret);
+        printf("WUP bytes read = %d\n", ret);
 
         wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
 
@@ -233,9 +224,8 @@ void* wup_receiver (void* arg)
                 current_veh->theta = wup->updates[i].theta;
                 if (DEBUG) printf("Updated veh n: %d . . . . . . . . . . .\n", current_veh->id);
             }
-            else if (current_veh == 0 && wup->updates[i].id != args->my_id)
+            else if (current_veh == 0 && wup->updates[i].id != args->my_id && halting_flag == 0)
             {
-              if (DEBUG) printf("Time to request veh... :(\n");
               unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
             }
         }
@@ -249,9 +239,11 @@ void* wup_receiver (void* arg)
           if (veh->id != wup->updates[i].id ) World_detachVehicle(args->world, veh);
         }
         */
-        World_update(args->world);
+
         if (DEBUG) printf("wup read succesfully\n");
     }
+    ret = close(socket_desc);
+    ERROR_HELPER(ret, "Error closing wup socket desc\n");
 }
 
 
@@ -260,14 +252,8 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
 {
     int ret, bytes_to_read, bytes_to_send;
     char buffer[1024*1024*5];
-    struct sockaddr_in server_addr;
+
     ImagePacket* texture;
-
-
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SERVER_TEXTURE_HANDLER_PORT);
-    server_addr.sin_addr.s_addr = addr->sin_addr.s_addr;
-
 
     texture = malloc(sizeof(ImagePacket));
     texture->id = id;
@@ -275,6 +261,7 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
     texture->header.type = 0x2;
     texture->header.size = sizeof(ImagePacket);
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture);
+    printf("VEH REQ BYTES TO SEND: %d\n", bytes_to_send);
 
     ret = send(socket_desc, buffer, bytes_to_send, 0);
 
@@ -282,6 +269,7 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
 
     ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
     ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
+    printf("texture bytes to read: %d\n", bytes_to_read);
     ERROR_HELPER(ret, "Problem with ret in texture receiver\n");
 
 
@@ -322,7 +310,7 @@ void* client_updater_for_server(void* arg)
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(CL_UP_RECV_PORT);
 
-    while (1)
+    while (halting_flag == 0)
     {
         veh_up->rotational_force = args->veh->rotational_force_update;
         veh_up->translational_force = args->veh->translational_force_update;
@@ -338,27 +326,25 @@ void* client_updater_for_server(void* arg)
     }
 }
 
-void quit_handler()
+void quit_handler(int sig)
 {
-    int ret, socket_desc, bytes_sent, bytes_to_send;
-    char buffer[] = {0};
-    struct sockaddr_in server_addr;
+    halting_flag = 1;
+    usleep(50000);
+    int ret, bytes_sent, bytes_to_send;
+    char* buffer = "quit";
 
-    socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
-    ERROR_HELPER(socket_desc, "Could not create quit handler socket\n");
-
-    server_addr.sin_addr.s_addr = inet_addr(global_server_addr);
-    server_addr.sin_port = htons(CL_UP_RECV_PORT);
-    server_addr.sin_family = AF_INET;
 
     bytes_sent = 0;
     bytes_to_send = sizeof(buffer);
     while (bytes_sent < bytes_to_send)
     {
-      ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+      ret = send(tcp_socket, buffer+bytes_sent, bytes_to_send- bytes_sent, 0);
       ERROR_HELPER(ret, "Could not send quit msg to server!\n");
+      bytes_sent +=ret;
     }
-    if (DEBUG) printf("quit message sent to server, exiting...\n");
+    if (DEBUG) printf("quit message: (%d bytes) sent to server, exiting...\n", bytes_to_send);
+    ret = close(tcp_socket);
+    ERROR_HELPER(ret, "Uaba laba luuu quit handler fail...\n");
     exit(0);
 
 }

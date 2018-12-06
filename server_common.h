@@ -14,12 +14,6 @@
 #define WUP_SEM "/wup_sem"
 #define HEADER_SIZE 4
 
-void sem_cleanup(void);
-void* wup_sender(void* arg);
-void* texture_request_handler(void* arg);
-void wup_cl_remove(WorldUpdatePacket* wup, int client_id);
-void* cl_up_handler (void* arg);
-
 typedef struct {
     Image* map_texture;
     Image* map_elevation;
@@ -63,3 +57,10 @@ typedef struct {
     World* world;
     int cl_up_socket;
 } cl_up_args;
+
+
+void sem_cleanup(void);
+void* wup_sender(void* arg);
+void* texture_request_handler(void* arg);
+void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list, Client_info* client);
+void* cl_up_handler (void* arg);
