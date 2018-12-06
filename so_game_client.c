@@ -291,7 +291,6 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
       Packet_free((PacketHeader*) texture);
       if (DEBUG) printf("texture of veh n: %d is NULL... aborted\n", id);
     }
-
 }
 
 void* client_updater_for_server(void* arg)
@@ -325,6 +324,7 @@ void* client_updater_for_server(void* arg)
         usleep(50000);
     }
 }
+
 
 void quit_handler(int sig)
 {

@@ -148,16 +148,16 @@ void* server_connection_handler(void* arg)
 
     while(1){
       bytes_read = 0;
-      bytes_read = recv(tcp_socket_desc, buffer, quit_len, MSG_WAITALL);
+      bytes_read = recv(tcp_socket_desc, buffer, quit_len, 0);
       if (strncmp(quit_message, buffer, quit_len) == 0) {
         wup_cl_remove(wup, client_id, args->client_list, client);
         break;
       }
-      while(bytes_read < bytes_to_read) {
-          bytes_read = recv(tcp_socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, MSG_WAITALL);
-          if (errno == EINTR) continue;
-          ERROR_HELPER(bytes_read, "Cannot receive text req packet packet from client\n");
-      }
+    //while(bytes_read < bytes_to_read) {
+      bytes_read = recv(tcp_socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, MSG_WAITALL);
+    //if (errno == EINTR) continue;
+      ERROR_HELPER(bytes_read, "Cannot receive text req packet from client\n");
+    //}
 
 
       ImagePacket* text_req = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
