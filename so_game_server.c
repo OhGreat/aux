@@ -305,97 +305,63 @@ void* wup_sender(void* arg) {
           if (DEBUG) printf("successfully sent wup to all clients\n");
     }
 }
-/*
-
-//function to handle texture requests**********************************************
-void* texture_request_handler(void* arg) {
-  int ret = 0;
-  int read_bytes, bytes_to_send, bytes_to_read, bytes_sent, socket_desc;
-  struct sockaddr_in client_addr ={0};
-  int sockaddr_len = sizeof(struct sockaddr_in);
-  char buffer[1024*1024*5];
-  texture_handler_args* args = (texture_handler_args*) arg;
-  socket_desc = args->socket_desc;
 
 
 
-
-
-
-  while(1) {
-
-    read_bytes = recvfrom(socket_desc, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &client_addr, (socklen_t*) &sockaddr_len );
-    ERROR_HELPER(read_bytes, "Cannot receive vehicle update packet from client\n");
-
-    printf("Texture request received!!!\n");
-
-    ImagePacket* text_req = (ImagePacket*) Packet_deserialize(buffer, read_bytes);
-    if (text_req->header.type != 0x2 && text_req->id == 0)
-        ERROR_HELPER(-1, "Received wrong packet, waiting for texture request\n");
-
-    vehicle = World_getVehicle(args->world, text_req->id);
-    text_req->header.type = 0x4;
-    text_req->image = vehicle->texture;
-    text_req->header.size = sizeof(text_req);
-    bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
-    printf("TEXTURE BYTES TO SEND: %d\n", bytes_to_send);
-    ret = sendto(socket_desc, &bytes_to_send, sizeof(int), 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-    bytes_sent = 0;
-    while (bytes_sent < bytes_to_send) {
-        ret = sendto(socket_desc, buffer+bytes_sent, 1, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-        if (errno == EINTR) continue;
-        ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
-        bytes_sent += ret;
-    }
-
-    printf("texture: %d sent to client!\n", text_req->id);
-    Packet_free((PacketHeader*) text_req);
-
-  }
-}
-*/
 void* cl_up_handler (void* arg) {
   int ret;
   char buffer[1024*1024*5];
   cl_up_args* args = (cl_up_args*) arg;
-  struct sockaddr_in client_addr;
-  socklen_t addrlen = sizeof(client_addr);
+  Vehicle* veh;
+  ClientUpdate* cl_up;
+  WorldUpdatePacket* wup = args->wup;
+
+  sem_t* sem = sem_open(WUP_SEM, 0);
+  sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
+
+  //per sapere grandezza del packet...
   VehicleUpdatePacket* vup = malloc( sizeof(VehicleUpdatePacket));
   vup->header.size = sizeof(VehicleUpdatePacket);
   vup->header.type = 0x7;
   int bytes_to_read = Packet_serialize(buffer, (PacketHeader*) vup);
-  printf("CL TO READ: %d\n", bytes_to_read);
   Packet_free((PacketHeader*) vup);
-  Vehicle* veh;
-  ClientUpdate* cl_up;
-  int sem_val = 0;
+
+
   //sem_t* sem;
   while(1) {
-      ret = recvfrom(args->cl_up_socket, buffer, bytes_to_read, MSG_WAITALL, (struct sockaddr*) &client_addr, &addrlen);
+      ret = recv(args->cl_up_socket, buffer, bytes_to_read, MSG_WAITALL);
       ERROR_HELPER(ret, "Error reciving cl_up\n");
-      if (DEBUG) printf("received cl_up!!\n");
-      printf("CL TO READ: %d\n", bytes_to_read);
 
       vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
 
       //find client and update its vehicles
-      Client_info* client = (Client_info*) args->client_list->first;
-      while (client != NULL && client->client_addr->sin_addr.s_addr != client_addr.sin_addr.s_addr) {
-        client = (Client_info*) client->list.next;
+      int i;
+      for(i=0;i<wup->num_vehicles && cl_up->id != vup->id; i++){
+        cl_up = &(wup->updates[i]);
       }
-      if (client != NULL) {
-          cl_up = client->cl_up;
-          veh = client->veh;
+      if (cl_up->id == vup->id) {
+
+          veh = World_getVehicle(args->world, vup->id);
           veh->translational_force_update = vup->translational_force;
           veh->rotational_force_update = vup->rotational_force;
           Vehicle_update(veh, args->world->dt);
-          while (sem_val == 0) {
-            sem_getvalue(wup_sem, &sem_val);
+
+            ret = sem_wait(sem);
+            ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+            ret = sem_wait(cl_sem);
+            ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+            cl_up->x = veh->x;
+            cl_up->y = veh->y;
+            cl_up->theta = veh->theta;
+            ret = sem_post(sem);
+            ERROR_HELPER(ret, "Could not post wup sem\n");
+            ret = sem_post(cl_sem);
+            ERROR_HELPER(ret, "Cannot post client list semaphore\n");
+            if (DEBUG) printf("Updated vehicle: %d on x:%f, y: %f\n", cl_up->id, cl_up->x, cl_up->y);
           }
-          cl_up->x = veh->x;
-          cl_up->y = veh->y;
-          cl_up->theta = veh->theta;
-          if (DEBUG) printf("Updated vehicle: %d on x:%f, y: %f\n", cl_up->id, cl_up->x, cl_up->y);
+
+      else {
+        printf("how did we end up here?\n");
       }
     }
   }

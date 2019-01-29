@@ -117,6 +117,9 @@ void* server_connection_handler(void* arg)
     sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+    sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
+    ret = sem_wait(cl_sem);
+    ERROR_HELPER(ret, "Cannot wait cl semaphore\n");
 
     List_insert(args->client_list, args->client_list->last, (ListItem*) client);
     World_addVehicle(args->world, veh);
@@ -131,9 +134,20 @@ void* server_connection_handler(void* arg)
     client->cl_up = cl_up;
     ret = sem_post(sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
+    ret = sem_post(cl_sem);
+    ERROR_HELPER(ret, "Cannot post client list semaphore\n");
+    ret = sem_close(cl_sem);
+    ERROR_HELPER(ret, "Cannot close client list semaphore\n");
+    ret = sem_close(sem);
+    ERROR_HELPER(ret, "Cannot close wup sem\n");
     //ret = sem_close(sem);
     //ERROR_HELPER(ret, "Could not close wup_sem\n");
     if (DEBUG) printf("Client: %d logged in successfully\n", client_id);
+
+    int i =0;
+    for (;i<wup->num_vehicles;i++) {
+      printf("client: %d, x:%f\n", wup->updates[i].id, wup->updates[i].x);
+    }
 
 
     //send back textures of other clients when this cl requests it
@@ -142,13 +156,13 @@ void* server_connection_handler(void* arg)
     text_packet_size->header.type = 0x2;
     text_packet_size->header.size = sizeof(text_packet_size);
     bytes_to_read = Packet_serialize(buffer, (PacketHeader*) text_packet_size);
-    printf("IMAGE PACKET SIZE: %d..................\n", bytes_to_read);
     char* quit_message = "quit";
     int quit_len = sizeof(quit_message);
 
     while(1){
       bytes_read = 0;
       bytes_read = recv(tcp_socket_desc, buffer, quit_len, 0);
+      ERROR_HELPER(ret, "Error receiving quit message from cl\n");
       if (strncmp(quit_message, buffer, quit_len) == 0) {
         wup_cl_remove(wup, client_id, args->client_list, client);
         break;
@@ -158,7 +172,7 @@ void* server_connection_handler(void* arg)
     //if (errno == EINTR) continue;
       ERROR_HELPER(bytes_read, "Cannot receive text req packet from client\n");
     //}
-
+      if (bytes_read == 0) continue;
 
       ImagePacket* text_req = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
       printf("Texture request received from cl: %d (requesting: %d) bytes read: %d\n", client_id, text_req->id, bytes_read);
@@ -180,10 +194,11 @@ void* server_connection_handler(void* arg)
           bytes_sent += ret;
       }
 
-      printf("texture: %d sent to client!\n", text_req->id);
+      printf("texture: %d sent to client: %d!\n", text_req->id, client_id);
       Packet_free((PacketHeader*) text_req);
 
     }
+    if (DEBUG) printf("client: %d succesfully disconnected, closing handler thread\n", client_id);
 
 }
 
