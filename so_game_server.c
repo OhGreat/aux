@@ -313,8 +313,8 @@ void* cl_up_handler (void* arg) {
   char buffer[1024*1024*5];
   cl_up_args* args = (cl_up_args*) arg;
   Vehicle* veh;
-  ClientUpdate* cl_up;
   WorldUpdatePacket* wup = args->wup;
+  ClientUpdate* cl_up ; //= &(wup->updates[0])
 
   sem_t* sem = sem_open(WUP_SEM, 0);
   sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
@@ -333,11 +333,13 @@ void* cl_up_handler (void* arg) {
       ERROR_HELPER(ret, "Error reciving cl_up\n");
 
       vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
-
+      printf("Initializing procss of cl_up packet of veh: %d\n", vup->id);
       //find client and update its vehicles
-      int i;
-      for(i=0;i<wup->num_vehicles && cl_up->id != vup->id; i++){
+      int i = 0;
+      cl_up = &(wup->updates[i]);
+      while(i<wup->num_vehicles && cl_up->id != vup->id){
         cl_up = &(wup->updates[i]);
+        i++;
       }
       if (cl_up->id == vup->id) {
 
@@ -346,17 +348,20 @@ void* cl_up_handler (void* arg) {
           veh->rotational_force_update = vup->rotational_force;
           Vehicle_update(veh, args->world->dt);
 
+            printf("    waiting to acquire sem resource (cl_up)\n");
             ret = sem_wait(sem);
             ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
-            ret = sem_wait(cl_sem);
-            ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+            printf("acquired sem 1\n");
+            //ret = sem_wait(cl_sem);
+            //ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+            //printf("acquired sem 2\n");
             cl_up->x = veh->x;
             cl_up->y = veh->y;
             cl_up->theta = veh->theta;
             ret = sem_post(sem);
             ERROR_HELPER(ret, "Could not post wup sem\n");
-            ret = sem_post(cl_sem);
-            ERROR_HELPER(ret, "Cannot post client list semaphore\n");
+            //ret = sem_post(cl_sem);
+            //ERROR_HELPER(ret, "Cannot post client list semaphore\n");
             if (DEBUG) printf("Updated vehicle: %d on x:%f, y: %f\n", cl_up->id, cl_up->x, cl_up->y);
           }
 

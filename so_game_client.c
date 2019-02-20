@@ -168,6 +168,7 @@ int main(int argc, char **argv) {
   thread_args->world = &world;
   thread_args->server_addr = &server_addr;
   thread_args->tcp_socket = main_socket_desc;
+  thread_args->texture = my_texture;
   ret = pthread_create(&wup_receiver_thread, NULL, wup_receiver, thread_args);
   ERROR_HELPER(ret, "Could not create wup receiver thread\n");
   ret = pthread_detach(wup_receiver_thread);
@@ -193,7 +194,7 @@ void* wup_receiver (void* arg)
     struct sockaddr_in client_addr;
     char buffer[1024*1024*5];
     wup_receiver_args* args = (wup_receiver_args*) arg;
-    int i, update_vehs, world_vehs;
+    int i, update_vehs;
     WorldUpdatePacket* wup;
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
@@ -219,10 +220,10 @@ void* wup_receiver (void* arg)
         update_vehs = wup->num_vehicles;
         for (i=0; i<update_vehs; i++)
         {
+            printf("reading updatecpacket: #%d, id: %d... x:%lf, y:%lf, theta: %lf\n", i, wup->updates[i].id, wup->updates[i].x, wup->updates[i].y, wup->updates[i].theta);
             current_veh = World_getVehicle(args->world, wup->updates[i].id);
             if (current_veh != 0 && current_veh->id != args->my_id)
             {
-                printf("iter: %d\n", i);
                 current_veh->x = wup->updates[i].x;
                 current_veh->y = wup->updates[i].y;
                 current_veh->theta = wup->updates[i].theta;
@@ -230,7 +231,10 @@ void* wup_receiver (void* arg)
             }
             else if (current_veh == 0 && wup->updates[i].id != args->my_id && halting_flag == 0)
             {
-              unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
+                //unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
+                Vehicle* veh = malloc(sizeof(Vehicle));
+                Vehicle_init(veh, args->world, wup->updates[i].id, args->texture);
+                World_addVehicle(args->world, veh);
             }
         }
         /*
