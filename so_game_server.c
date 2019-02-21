@@ -262,6 +262,9 @@ void* wup_sender(void* arg) {
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
     ERROR_HELPER(socket_desc, "Could not create socket to send wup \n");
+    int broadcastPermission = 1;
+    if (setsockopt(socket_desc, SOL_SOCKET, SO_BROADCAST, (void*) &broadcastPermission, sizeof(broadcastPermission)) < 0)
+      ERROR_HELPER(-1, "Failed setting broadcast permission to wup sender\n");
 
     while (1) {
 
@@ -279,7 +282,8 @@ void* wup_sender(void* arg) {
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) args->wup);
         while (i < n_clients) {
 
-            client_addr.sin_addr.s_addr = client->client_addr->sin_addr.s_addr;
+            //client_addr.sin_addr.s_addr = client->client_addr->sin_addr.s_addr;
+            client_addr.sin_addr.s_addr = inet_addr("172.25.1.255");
 
             ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
             ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
@@ -300,7 +304,7 @@ void* wup_sender(void* arg) {
           ERROR_HELPER(ret, "Cannot post client list semaphore\n");
           ret = sem_close(client_list_sem);
           ERROR_HELPER(ret, "Cannot close client list semaphore\n");
-          ret = usleep(50000);
+          ret = usleep(10000);
           if (ret == -1 && errno == EINTR) printf("error sleeping thread with usleep\n");
           if (DEBUG) printf("successfully sent wup to all clients\n");
     }
@@ -317,9 +321,9 @@ void* cl_up_handler (void* arg) {
   ClientUpdate* cl_up ; //= &(wup->updates[0])
 
   sem_t* sem = sem_open(WUP_SEM, 0);
-  sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
+  //sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
 
-  //per sapere grandezza del packet...
+  //per sapere la grandezza del packet...
   VehicleUpdatePacket* vup = malloc( sizeof(VehicleUpdatePacket));
   vup->header.size = sizeof(VehicleUpdatePacket);
   vup->header.type = 0x7;
@@ -351,7 +355,7 @@ void* cl_up_handler (void* arg) {
             printf("    waiting to acquire sem resource (cl_up)\n");
             ret = sem_wait(sem);
             ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
-            printf("acquired sem 1\n");
+            printf("    acquired wup sem \n");
             //ret = sem_wait(cl_sem);
             //ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
             //printf("acquired sem 2\n");

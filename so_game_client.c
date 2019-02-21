@@ -212,15 +212,17 @@ void* wup_receiver (void* arg)
     Vehicle* current_veh = (Vehicle*) args->vehicles.first;
     while (halting_flag == 0)
     {
+        if (DEBUG) printf("WUP || waiting to receive next wup\n");
         ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
         ERROR_HELPER(ret, "Error receiving wup size\n");
+        if (DEBUG) printf("WUP|| size of wup received: %d\n", bytes_to_read);
         ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
-        printf("WUP bytes read = %d\n", ret);
+        printf("WUP || wup bytes read = %d\n", ret);
         wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
         update_vehs = wup->num_vehicles;
         for (i=0; i<update_vehs; i++)
         {
-            printf("reading updatecpacket: #%d, id: %d... x:%lf, y:%lf, theta: %lf\n", i, wup->updates[i].id, wup->updates[i].x, wup->updates[i].y, wup->updates[i].theta);
+            printf("reading update packet: #%d, id: %d... x:%lf, y:%lf, theta: %lf\n", i, wup->updates[i].id, wup->updates[i].x, wup->updates[i].y, wup->updates[i].theta);
             current_veh = World_getVehicle(args->world, wup->updates[i].id);
             if (current_veh != 0 && current_veh->id != args->my_id)
             {
@@ -250,6 +252,7 @@ void* wup_receiver (void* arg)
 
         if (DEBUG) printf("wup read succesfully\n");
     }
+    if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
     ret = close(socket_desc);
     ERROR_HELPER(ret, "Error closing wup socket desc\n");
 }
@@ -262,7 +265,6 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
     char buffer[1024*1024*5];
 
     ImagePacket* texture;
-
     texture = malloc(sizeof(ImagePacket));
     texture->id = id;
     texture->image = NULL;
