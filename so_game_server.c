@@ -304,7 +304,7 @@ void* wup_sender(void* arg) {
           ERROR_HELPER(ret, "Cannot post client list semaphore\n");
           ret = sem_close(client_list_sem);
           ERROR_HELPER(ret, "Cannot close client list semaphore\n");
-          ret = usleep(10000);
+          ret = usleep(1000);
           if (ret == -1 && errno == EINTR) printf("error sleeping thread with usleep\n");
           if (DEBUG) printf("successfully sent wup to all clients\n");
     }

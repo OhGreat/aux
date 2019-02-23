@@ -224,7 +224,7 @@ void* wup_receiver (void* arg)
         {
             printf("reading update packet: #%d, id: %d... x:%lf, y:%lf, theta: %lf\n", i, wup->updates[i].id, wup->updates[i].x, wup->updates[i].y, wup->updates[i].theta);
             current_veh = World_getVehicle(args->world, wup->updates[i].id);
-            if (current_veh != 0 && current_veh->id != args->my_id)
+            if (current_veh != 0 ) //&& current_veh->id != args->my_id
             {
                 current_veh->x = wup->updates[i].x;
                 current_veh->y = wup->updates[i].y;
