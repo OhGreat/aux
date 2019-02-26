@@ -117,9 +117,9 @@ void* server_connection_handler(void* arg)
     sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
-    sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
-    ret = sem_wait(cl_sem);
-    ERROR_HELPER(ret, "Cannot wait cl semaphore\n");
+    //sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
+    //ret = sem_wait(cl_sem);
+    //ERROR_HELPER(ret, "Cannot wait cl semaphore\n");
 
     List_insert(args->client_list, args->client_list->last, (ListItem*) client);
     World_addVehicle(args->world, veh);
@@ -134,18 +134,18 @@ void* server_connection_handler(void* arg)
     client->cl_up = cl_up;
     ret = sem_post(sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
-    ret = sem_post(cl_sem);
-    ERROR_HELPER(ret, "Cannot post client list semaphore\n");
-    ret = sem_close(cl_sem);
-    ERROR_HELPER(ret, "Cannot close client list semaphore\n");
     ret = sem_close(sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
-    //ret = sem_close(sem);
-    //ERROR_HELPER(ret, "Could not close wup_sem\n");
+    //ret = sem_post(cl_sem);
+    //ERROR_HELPER(ret, "Cannot post client list semaphore\n");
+    //ret = sem_close(cl_sem);
+    //ERROR_HELPER(ret, "Cannot close client list semaphore\n");
+
+
     if (DEBUG) printf("Client: %d logged in successfully\n", client_id);
 
     int i =0;
-    for (;i<wup->num_vehicles;i++) {
+    for (;i<1;i++) { //i<wup->num_vehicles
       printf("client: %d, x:%f\n", wup->updates[i].id, wup->updates[i].x);
     }
 

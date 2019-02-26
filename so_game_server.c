@@ -25,7 +25,7 @@
 
 
 
-sem_t* client_list_sem;
+
 sem_t* wup_sem;
 
 int main(int argc, char **argv) {
@@ -76,17 +76,6 @@ int main(int argc, char **argv) {
   map_info->map_elevation = surface_elevation;
 
 
-  //initializing semaphore for thread synchronization
-  client_list_sem = sem_open(CLIENT_LIST_SEM, O_CREAT | O_EXCL, 0600, 1);
-  if (client_list_sem == SEM_FAILED && errno == EEXIST) {
-      sem_unlink(CLIENT_LIST_SEM);
-      client_list_sem = sem_open(CLIENT_LIST_SEM, O_CREAT | O_EXCL, 0600, 1);
-  }
-  if (client_list_sem == SEM_FAILED) {
-      printf("[FATAL ERROR] could not open client_list_sem, the reason is: %s\n", strerror(errno));
-      exit(EXIT_FAILURE);
-  }
-
   //creating worldupdatepacket and client_list to share with clients
   ListHead* client_list = malloc(sizeof(ListHead));
   List_init(client_list);
@@ -99,7 +88,7 @@ int main(int argc, char **argv) {
   wup_sem = sem_open(WUP_SEM, O_CREAT | O_EXCL, 0600, 1);
   if (wup_sem == SEM_FAILED && errno == EEXIST) {
       sem_unlink(WUP_SEM);
-      client_list_sem = sem_open(WUP_SEM, O_CREAT | O_EXCL, 0600, 1);
+      wup_sem = sem_open(WUP_SEM, O_CREAT | O_EXCL, 0600, 1);
   }
   if (wup_sem == SEM_FAILED) {
       printf("[FATAL ERROR] could not open wup_sem, the reason is: %s\n", strerror(errno));
@@ -160,19 +149,7 @@ int main(int argc, char **argv) {
 
   ret = bind(texture_handler_socket, (struct sockaddr*) &texture_addr, sizeof(texture_addr));
   ERROR_HELPER(ret, "Error binding address to texture handler socket\n");
-/*
-  //creating thread to handle texture requests
-  pthread_t texture_handler_thread;
-  texture_handler_args* texture_args = malloc(sizeof(texture_handler_args));
-  texture_args->socket_desc = texture_handler_socket;
-  texture_args->world = world;
-  ret = pthread_create(&texture_handler_thread, NULL, texture_request_handler, (void *) texture_args);
-  PTHREAD_ERROR_HELPER(ret, "Could not create texture handler thread\n");
-  ret = pthread_detach(texture_handler_thread);
-  PTHREAD_ERROR_HELPER(ret, "Could not detach texture handler thread");
-  if (DEBUG) printf("Spawned thread to handle texture requests from clients\n");
-  ****************************************************************************
-*/
+
   // creating tcp_socket and accepting new connections to be handled by a thread
   int tcp_socket_desc, tcp_client_desc;
   struct sockaddr_in tcp_server_addr = {0};
@@ -245,7 +222,7 @@ int main(int argc, char **argv) {
 
 //function to send wup to clients***********************************************
 void* wup_sender(void* arg) {
-    int ret = 0, i = 0;
+    int ret = 0;
     int bytes_to_send, socket_desc;
     struct sockaddr_in client_addr = {0};
     client_addr.sin_family = AF_INET;
@@ -256,9 +233,7 @@ void* wup_sender(void* arg) {
 
     ListHead* client_list = args->client_list;
     int n_clients;
-    Client_info* client;
 
-    char addr_str[INET6_ADDRSTRLEN];
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
     ERROR_HELPER(socket_desc, "Could not create socket to send wup \n");
@@ -268,9 +243,6 @@ void* wup_sender(void* arg) {
 
     while (1) {
 
-        sem_t* client_list_sem = sem_open(CLIENT_LIST_SEM, 0);
-        ret = sem_wait(client_list_sem);
-        ERROR_HELPER(ret, "Cannot open client list semaphore\n");
         sem_t* wup_sem = sem_open(WUP_SEM, 0);
         ERROR_HELPER(ret, "Cannot open wup semaphore to send wup\n");
         ret = sem_wait(wup_sem);
@@ -278,33 +250,20 @@ void* wup_sender(void* arg) {
 
         n_clients = client_list->size;
         printf("n connected clients:%d\n",n_clients);
-        client = (Client_info*) client_list->first;
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) args->wup);
-        while (i < n_clients) {
+        client_addr.sin_addr.s_addr = inet_addr(CLIENT_BROADCAST_ADDR);
 
-            //client_addr.sin_addr.s_addr = client->client_addr->sin_addr.s_addr;
-            client_addr.sin_addr.s_addr = inet_addr("172.25.1.255");
+        ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+        ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
 
-            ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
-            ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+        if (DEBUG) printf("wup sent to all connected clients\n");
 
-
-            inet_ntop(AF_INET, &(client_addr.sin_addr.s_addr), addr_str, sizeof(addr_str));
-            if (DEBUG) printf("wup sent to: %d addr: %s\n", client->id, addr_str);
-            client = (Client_info*) client->list.next;
-            i++;
-
-          }
-          i = 0;
           ret = sem_post(wup_sem);
           ERROR_HELPER(ret, "Cannot post wup sem\n");
           ret = sem_close(wup_sem);
           ERROR_HELPER(ret, "Cannot close wup sem\n");
-          ret = sem_post(client_list_sem);
-          ERROR_HELPER(ret, "Cannot post client list semaphore\n");
-          ret = sem_close(client_list_sem);
-          ERROR_HELPER(ret, "Cannot close client list semaphore\n");
-          ret = usleep(1000);
+
+          ret = usleep(5000);
           if (ret == -1 && errno == EINTR) printf("error sleeping thread with usleep\n");
           if (DEBUG) printf("successfully sent wup to all clients\n");
     }
@@ -318,10 +277,10 @@ void* cl_up_handler (void* arg) {
   cl_up_args* args = (cl_up_args*) arg;
   Vehicle* veh;
   WorldUpdatePacket* wup = args->wup;
-  ClientUpdate* cl_up ; //= &(wup->updates[0])
+  ClientUpdate* cl_up ;
 
   sem_t* sem = sem_open(WUP_SEM, 0);
-  //sem_t* cl_sem = sem_open(CLIENT_LIST_SEM, 0);
+
 
   //per sapere la grandezza del packet...
   VehicleUpdatePacket* vup = malloc( sizeof(VehicleUpdatePacket));
@@ -356,16 +315,11 @@ void* cl_up_handler (void* arg) {
             ret = sem_wait(sem);
             ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
             printf("    acquired wup sem \n");
-            //ret = sem_wait(cl_sem);
-            //ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
-            //printf("acquired sem 2\n");
             cl_up->x = veh->x;
             cl_up->y = veh->y;
             cl_up->theta = veh->theta;
             ret = sem_post(sem);
             ERROR_HELPER(ret, "Could not post wup sem\n");
-            //ret = sem_post(cl_sem);
-            //ERROR_HELPER(ret, "Cannot post client list semaphore\n");
             if (DEBUG) printf("Updated vehicle: %d on x:%f, y: %f\n", cl_up->id, cl_up->x, cl_up->y);
           }
 
@@ -380,9 +334,6 @@ void* cl_up_handler (void* arg) {
 
 //sem cleanup func
 void sem_cleanup(void) {
-    sem_close(client_list_sem);
-    sem_unlink(CLIENT_LIST_SEM);
-
     sem_close(wup_sem);
     sem_unlink(WUP_SEM);
 }
