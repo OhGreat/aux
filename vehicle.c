@@ -6,7 +6,7 @@
 int Vehicle_update(Vehicle* v, float dt){
   float tf=v->translational_force_update;
   float rf=v->rotational_force_update;
-  
+
   if (tf > v->max_translational_force)
     tf = v->max_translational_force;
   if (tf < -v->max_translational_force)
@@ -16,7 +16,7 @@ int Vehicle_update(Vehicle* v, float dt){
     rf = v->max_rotational_force;
   if (rf < -v->max_rotational_force)
     rf = -v->max_rotational_force;
-  
+
 
   // retrieve the position of the vehicle
   if(! Surface_getTransform(v->camera_to_world, &v->world->ground, v->x, v->y, 0, v->theta, 0)) {
@@ -68,6 +68,29 @@ void Vehicle_init(Vehicle* v, World* w, int id, Image* texture){
   v->y = v->world->ground.cols/2 * v->world->ground.col_scale;
   v->translational_force_update=0;
   v->rotational_force_update=0;
+  v->max_rotational_force=0.1;
+  v->max_translational_force=0.1;
+  v->min_rotational_force=0.1;
+  v->min_translational_force=0.1;
+  v->translational_velocity=0;
+  v->rotational_velocity=0;
+  Vehicle_reset(v);
+  v->gl_texture = -1;
+  v->gl_list = -1;
+  v->_destructor=0;
+}
+/* DEFAULT
+
+void Vehicle_init(Vehicle* v, World* w, int id, Image* texture){
+  v->world= w;
+  v->id=id;
+  v->texture=texture;
+  v->theta = 0;
+  v->list.next=v->list.prev=0;
+  v->x = v->world->ground.rows/2 * v->world->ground.row_scale;
+  v->y = v->world->ground.cols/2 * v->world->ground.col_scale;
+  v->translational_force_update=0;
+  v->rotational_force_update=0;
   v->max_rotational_force=0.5;
   v->max_translational_force=10;
   v->min_rotational_force=0.05;
@@ -80,6 +103,7 @@ void Vehicle_init(Vehicle* v, World* w, int id, Image* texture){
   v->_destructor=0;
 }
 
+*/
 
 void Vehicle_reset(Vehicle* v){
   v->rotational_force=0;
@@ -95,6 +119,6 @@ void Vehicle_reset(Vehicle* v){
 
 
 void Vehicle_destroy(Vehicle* v){
-  if (v->_destructor) 
+  if (v->_destructor)
     (*v->_destructor)(v);
 }

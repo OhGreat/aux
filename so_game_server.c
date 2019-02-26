@@ -263,7 +263,7 @@ void* wup_sender(void* arg) {
           ret = sem_close(wup_sem);
           ERROR_HELPER(ret, "Cannot close wup sem\n");
 
-          ret = usleep(5000);
+          ret = usleep(1000);
           if (ret == -1 && errno == EINTR) printf("error sleeping thread with usleep\n");
           if (DEBUG) printf("successfully sent wup to all clients\n");
     }
