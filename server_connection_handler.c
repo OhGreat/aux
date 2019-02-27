@@ -218,9 +218,7 @@ void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list,
             j++;
         }
     }
-    sem_t* client_list_sem = sem_open(CLIENT_LIST_SEM, 0);
-    ret = sem_wait(client_list_sem);
-    ERROR_HELPER(ret, "Cannot open client list semaphore\n");
+
     sem_t* wup_sem = sem_open(WUP_SEM, 0);
     ERROR_HELPER(ret, "Cannot open wup semaphore to send wup\n");
     ret = sem_wait(wup_sem);
@@ -235,9 +233,7 @@ void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list,
     ERROR_HELPER(ret, "Cannot post wup sem\n");
     ret = sem_close(wup_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
-    ret = sem_post(client_list_sem);
-    ERROR_HELPER(ret, "Cannot post client list semaphore\n");
-    ret = sem_close(client_list_sem);
+
     if (DEBUG) printf("dc request received from cl: %d, disconnected sucessfully\n", client_id);
 
 }
