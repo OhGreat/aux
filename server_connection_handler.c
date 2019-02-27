@@ -220,7 +220,7 @@ void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list,
     }
 
     sem_t* wup_sem = sem_open(WUP_SEM, 0);
-    ERROR_HELPER(ret, "Cannot open wup semaphore to send wup\n");
+    ERROR_HELPER(wup_sem, "Cannot open wup semaphore to send wup\n");
     ret = sem_wait(wup_sem);
     ERROR_HELPER(ret, "Cannot wait wup sem\n");
 

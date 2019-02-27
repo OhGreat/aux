@@ -212,9 +212,14 @@ void* wup_receiver (void* arg)
     Vehicle* current_veh = (Vehicle*) args->vehicles.first;
     while (halting_flag == 0)
     {
+
         if (DEBUG) printf("WUP || waiting to receive next wup\n");
         ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
         ERROR_HELPER(ret, "Error receiving wup size\n");
+        if (bytes_to_read == 0) {
+          printf("Server is offline. Quitting game...\n");
+          exit(0);
+        }
         if (DEBUG) printf("WUP|| size of wup received: %d\n", bytes_to_read);
         ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
         printf("WUP || wup bytes read = %d\n", ret);
@@ -331,6 +336,9 @@ void* client_updater_for_server(void* arg)
         if (DEBUG) printf("sent client update [%d bytes] packet to server\n", bytes_sent);
         usleep(50000);
     }
+    if (DEBUG) printf("halting flag: %d cl_up sender thread is closing\n", halting_flag);
+    ret = close(socket_desc);
+    ERROR_HELPER(ret, "Error closing cl_up socket desc\n");
 }
 
 

@@ -45,6 +45,7 @@ typedef struct {
 typedef struct {
     ListHead* client_list;
     WorldUpdatePacket* wup;
+    int wup_sender_desc;
 } wup_sender_args;
 
 typedef struct {
@@ -59,7 +60,7 @@ typedef struct {
     int cl_up_socket;
 } cl_up_args;
 
-
+void quit_handler(int sig);
 void sem_cleanup(void);
 void* wup_sender(void* arg);
 void* texture_request_handler(void* arg);

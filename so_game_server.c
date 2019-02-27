@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <semaphore.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #include "server_common.h"
 #include "image.h"
@@ -27,6 +28,9 @@
 
 
 sem_t* wup_sem;
+int halting_flag = 0;
+int quit_socket;
+
 
 int main(int argc, char **argv) {
   if (argc<3) {
@@ -95,12 +99,23 @@ int main(int argc, char **argv) {
       exit(EXIT_FAILURE);
   }
 
+  signal(SIGINT, quit_handler);
 
-  //creating thread to send wup to clients **********************************
+  //creating socket and thread to send wup to clients **********************************
+  int wup_sender_desc;
+  wup_sender_desc = socket(AF_INET, SOCK_DGRAM, 0);
+  ERROR_HELPER(wup_sender_desc, "Could not create socket to send wup \n");
+  int broadcastPermission = 1;
+  if (setsockopt(wup_sender_desc, SOL_SOCKET, SO_BROADCAST, (void*) &broadcastPermission, sizeof(broadcastPermission)) < 0)
+    ERROR_HELPER(-1, "Failed setting broadcast permission to wup sender\n");
+    quit_socket = wup_sender_desc;
+
+
   pthread_t wup_sender_thread;
   wup_sender_args* wup_thread_args = malloc(sizeof(wup_sender_args));
   wup_thread_args->client_list = client_list;
   wup_thread_args->wup = wup;
+  wup_thread_args->wup_sender_desc = wup_sender_desc;
   ret = pthread_create(&wup_sender_thread, NULL, wup_sender, (void *) wup_thread_args);
   PTHREAD_ERROR_HELPER(ret, "Could not create wup sender thread\n");
   ret = pthread_detach(wup_sender_thread);
@@ -136,7 +151,7 @@ int main(int argc, char **argv) {
   ret = pthread_detach(cl_thread);
   PTHREAD_ERROR_HELPER(ret, "Could not detach cl_up handler thread");
   if (DEBUG) printf("Spawned thread to handle cl_up from clients\n");
-
+/*
   //creating texture handler socket and thread********************************
   int texture_handler_socket;
   struct sockaddr_in texture_addr;
@@ -149,7 +164,7 @@ int main(int argc, char **argv) {
 
   ret = bind(texture_handler_socket, (struct sockaddr*) &texture_addr, sizeof(texture_addr));
   ERROR_HELPER(ret, "Error binding address to texture handler socket\n");
-
+*/
   // creating tcp_socket and accepting new connections to be handled by a thread
   int tcp_socket_desc, tcp_client_desc;
   struct sockaddr_in tcp_server_addr = {0};
@@ -177,7 +192,7 @@ int main(int argc, char **argv) {
   if (DEBUG) printf("Waiting for incoming connections..\n");
 
   //creating thread to handle incoming client connections
-  while (1) {
+  while (halting_flag == 0) {
 
       tcp_client_desc = accept(tcp_socket_desc, (struct sockaddr* ) tcp_client_addr, (socklen_t *) &sockaddr_len);
       ERROR_HELPER(tcp_client_desc, "Cannot open socket for incoming connection");
@@ -194,7 +209,7 @@ int main(int argc, char **argv) {
       thread_args->client_addr = tcp_client_addr;
       thread_args->cl_up_recv_sock = cl_up_recv_sock;
       thread_args->server_cl_up_recv_addr = &server_cl_up_recv_addr;
-      thread_args->texture_handler_socket = texture_handler_socket;
+      //thread_args->texture_handler_socket = texture_handler_socket;
       thread_args->cl_up_client_addr = cl_up_client_addr;
       thread_args->world = world;
       thread_args->map_info = map_info;
@@ -211,8 +226,6 @@ int main(int argc, char **argv) {
 
       tcp_client_addr = calloc(1, sizeof(struct sockaddr_in));
       cl_up_client_addr = calloc(1, sizeof(struct sockaddr_in));
-
-
   }
 
   sem_cleanup();
@@ -227,21 +240,23 @@ void* wup_sender(void* arg) {
     struct sockaddr_in client_addr = {0};
     client_addr.sin_family = AF_INET;
     client_addr.sin_port = htons(CLIENT_WUP_RECEIVER_PORT);
+    client_addr.sin_addr.s_addr = inet_addr(CLIENT_BROADCAST_ADDR);
 
     char buffer[1024*1024*5];
     wup_sender_args* args = (wup_sender_args*) arg;
+    socket_desc = args->wup_sender_desc;
 
     ListHead* client_list = args->client_list;
     int n_clients;
 
-
-    socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
-    ERROR_HELPER(socket_desc, "Could not create socket to send wup \n");
+/*
+    wup_sender_desc = socket(AF_INET, SOCK_DGRAM, 0);
+    ERROR_HELPER(wup_sender_thread, "Could not create socket to send wup \n");
     int broadcastPermission = 1;
-    if (setsockopt(socket_desc, SOL_SOCKET, SO_BROADCAST, (void*) &broadcastPermission, sizeof(broadcastPermission)) < 0)
+    if (setsockopt(wup_sender_thread, SOL_SOCKET, SO_BROADCAST, (void*) &broadcastPermission, sizeof(broadcastPermission)) < 0)
       ERROR_HELPER(-1, "Failed setting broadcast permission to wup sender\n");
-
-    while (1) {
+*/
+    while (halting_flag==0) {
 
         sem_t* wup_sem = sem_open(WUP_SEM, 0);
         ERROR_HELPER(ret, "Cannot open wup semaphore to send wup\n");
@@ -251,7 +266,7 @@ void* wup_sender(void* arg) {
         n_clients = client_list->size;
         printf("n connected clients:%d\n",n_clients);
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) args->wup);
-        client_addr.sin_addr.s_addr = inet_addr(CLIENT_BROADCAST_ADDR);
+
 
         ret = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
         ret = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
@@ -291,7 +306,7 @@ void* cl_up_handler (void* arg) {
 
 
   //sem_t* sem;
-  while(1) {
+  while(halting_flag == 0) {
       ret = recv(args->cl_up_socket, buffer, bytes_to_read, MSG_WAITALL);
       ERROR_HELPER(ret, "Error reciving cl_up\n");
 
@@ -327,9 +342,41 @@ void* cl_up_handler (void* arg) {
         printf("how did we end up here?\n");
       }
     }
+    ret = close(args->cl_up_socket);
+    ERROR_HELPER(ret,"Error closing cl_up_socket!\n");
+    if (DEBUG) printf("closed cl_up socket\n");
   }
 
 
+void quit_handler(int sig) {
+  halting_flag = 1;
+  usleep(50000);
+  int ret=0, bytes_sent = 0, bytes_to_send;
+  int val= 0;
+
+  struct sockaddr_in client_addr = {0};
+  client_addr.sin_family = AF_INET;
+  client_addr.sin_port = htons(CLIENT_WUP_RECEIVER_PORT);
+  client_addr.sin_addr.s_addr = inet_addr(CLIENT_BROADCAST_ADDR);
+
+  sem_t* wup_sem = sem_open(WUP_SEM, 0);
+  ERROR_HELPER(ret, "Cannot open wup semaphore to send wup\n");
+  ret = sem_wait(wup_sem);
+  ERROR_HELPER(ret, "Cannot wait wup sem\n");
+
+  bytes_sent = sendto(quit_socket, &val, sizeof(val), 0, (struct sockaddr*) &client_addr, sizeof(client_addr));
+  ERROR_HELPER(bytes_sent, "Could not send quit msg to clients!\n");
+
+  ret = sem_post(wup_sem);
+  ERROR_HELPER(ret, "Cannot post wup sem\n");
+  ret = sem_close(wup_sem);
+  ERROR_HELPER(ret, "Cannot close wup sem\n");
+
+  ret = close(quit_socket);
+  ERROR_HELPER(ret, "Closed wup_sender_socket succesfully\n");
+  exit(0);
+
+}
 
 
 //sem cleanup func
