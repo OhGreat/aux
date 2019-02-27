@@ -218,6 +218,8 @@ void* wup_receiver (void* arg)
         ERROR_HELPER(ret, "Error receiving wup size\n");
         if (bytes_to_read == 0) {
           printf("Server is offline. Quitting game...\n");
+          halting_flag=1;
+          printf("Bye.\n");
           exit(0);
         }
         if (DEBUG) printf("WUP|| size of wup received: %d\n", bytes_to_read);

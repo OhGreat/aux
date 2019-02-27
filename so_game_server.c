@@ -359,6 +359,7 @@ void quit_handler(int sig) {
   client_addr.sin_port = htons(CLIENT_WUP_RECEIVER_PORT);
   client_addr.sin_addr.s_addr = inet_addr(CLIENT_BROADCAST_ADDR);
 
+  if (DEBUG) printf("Server is closing, disconnecting all clients...\n");
   sem_t* wup_sem = sem_open(WUP_SEM, 0);
   ERROR_HELPER(ret, "Cannot open wup semaphore to send wup\n");
   ret = sem_wait(wup_sem);
@@ -372,8 +373,9 @@ void quit_handler(int sig) {
   ret = sem_close(wup_sem);
   ERROR_HELPER(ret, "Cannot close wup sem\n");
 
+  if (DEBUG) printf("Succesfully sent quit message to all clients.\n");
   ret = close(quit_socket);
-  ERROR_HELPER(ret, "Closed wup_sender_socket succesfully\n");
+  ERROR_HELPER(ret, "Closed wup_sender_socket succesfully\nGoodbye.\n");
   exit(0);
 
 }
