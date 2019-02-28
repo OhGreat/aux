@@ -282,6 +282,7 @@ void* wup_sender(void* arg) {
           if (ret == -1 && errno == EINTR) printf("error sleeping thread with usleep\n");
           if (DEBUG) printf("successfully sent wup to all clients\n");
     }
+    return 0;
 }
 
 
@@ -345,13 +346,14 @@ void* cl_up_handler (void* arg) {
     ret = close(args->cl_up_socket);
     ERROR_HELPER(ret,"Error closing cl_up_socket!\n");
     if (DEBUG) printf("closed cl_up socket\n");
+    return 0;
   }
 
 
 void quit_handler(int sig) {
   halting_flag = 1;
   usleep(50000);
-  int ret=0, bytes_sent = 0, bytes_to_send;
+  int ret=0, bytes_sent = 0;
   int val= 0;
 
   struct sockaddr_in client_addr = {0};

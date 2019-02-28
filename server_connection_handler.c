@@ -164,7 +164,7 @@ void* server_connection_handler(void* arg)
       bytes_read = recv(tcp_socket_desc, buffer, quit_len, 0);
       ERROR_HELPER(ret, "Error receiving quit message from cl\n");
       if (strncmp(quit_message, buffer, quit_len) == 0) {
-        wup_cl_remove(wup, client_id, args->client_list, client);
+        wup_cl_remove(wup, client_id, args->client_list, client, args->world, veh);
         break;
       }
     //while(bytes_read < bytes_to_read) {
@@ -199,12 +199,12 @@ void* server_connection_handler(void* arg)
 
     }
     if (DEBUG) printf("client: %d succesfully disconnected, closing handler thread\n", client_id);
-
+    return 0;
 }
 
 
 
-void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list, Client_info* client)
+void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list, Client_info* client, World* world, Vehicle* veh)
 {
     int ret, i, j=0, n_veh= wup->num_vehicles;
     WorldUpdatePacket* new = malloc(sizeof(WorldUpdatePacket));
@@ -228,7 +228,7 @@ void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list,
     wup->updates = new->updates;
     wup->num_vehicles = n_veh-1;
     List_detach(client_list, (ListItem*) client);
-
+    World_detachVehicle(world, veh);
     ret = sem_post(wup_sem);
     ERROR_HELPER(ret, "Cannot post wup sem\n");
     ret = sem_close(wup_sem);

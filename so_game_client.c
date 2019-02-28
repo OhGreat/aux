@@ -175,10 +175,6 @@ int main(int argc, char **argv) {
   ERROR_HELPER(ret, "Unable to detach wup receiver thread\n");
   if (DEBUG) printf("Created thread to receive wup from server\n");
 
-
-
-  //signal(SIGINT, quit_handler);
-
   WorldViewer_runGlobal(&world, vehicle, &argc, argv);
   //cleanup
   World_destroy(&world);
@@ -262,6 +258,7 @@ void* wup_receiver (void* arg)
     if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
     ret = close(socket_desc);
     ERROR_HELPER(ret, "Error closing wup socket desc\n");
+    return 0;
 }
 
 
@@ -341,13 +338,14 @@ void* client_updater_for_server(void* arg)
     if (DEBUG) printf("halting flag: %d cl_up sender thread is closing\n", halting_flag);
     ret = close(socket_desc);
     ERROR_HELPER(ret, "Error closing cl_up socket desc\n");
+    return 0;
 }
 
 
 void quit_handler(int sig)
 {
     halting_flag = 1;
-    usleep(50000);
+    usleep(60000);
     int ret, bytes_sent, bytes_to_send;
     char* buffer = "quit";
 
@@ -362,7 +360,33 @@ void quit_handler(int sig)
     }
     if (DEBUG) printf("quit message: (%d bytes) sent to server, exiting...\n", bytes_to_send);
     ret = close(tcp_socket);
-    ERROR_HELPER(ret, "Uaba laba luuu quit handler fail...\n");
+
+    ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
+    usleep(50000);
     exit(0);
 
 }
+/*
+void quit_handler_for_main()
+{
+    halting_flag = 1;
+    usleep(60000);
+    int ret, bytes_sent, bytes_to_send;
+    char* buffer = "quit";
+
+
+    bytes_sent = 0;
+    bytes_to_send = sizeof(buffer);
+    while (bytes_sent < bytes_to_send)
+    {
+      ret = send(tcp_socket, buffer+bytes_sent, bytes_to_send- bytes_sent, 0);
+      ERROR_HELPER(ret, "Could not send quit msg to server!\n");
+      bytes_sent +=ret;
+    }
+    if (DEBUG) printf("quit message: (%d bytes) sent to server, exiting...\n", bytes_to_send);
+    ret = close(tcp_socket);
+    ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
+
+
+}
+*/
