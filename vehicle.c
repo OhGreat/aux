@@ -56,7 +56,7 @@ int Vehicle_update(Vehicle* v, float dt){
   Surface_getTransform(v->world_to_camera, &v->world->ground, nx, ny, 0, v->theta, 1);
   return 1;
 }
-
+/*
 
 void Vehicle_init(Vehicle* v, World* w, int id, Image* texture){
   v->world= w;
@@ -79,8 +79,8 @@ void Vehicle_init(Vehicle* v, World* w, int id, Image* texture){
   v->gl_list = -1;
   v->_destructor=0;
 }
-/* DEFAULT
-
+ DEFAULT
+*/
 void Vehicle_init(Vehicle* v, World* w, int id, Image* texture){
   v->world= w;
   v->id=id;
@@ -103,7 +103,7 @@ void Vehicle_init(Vehicle* v, World* w, int id, Image* texture){
   v->_destructor=0;
 }
 
-*/
+
 
 void Vehicle_reset(Vehicle* v){
   v->rotational_force=0;
