@@ -155,7 +155,7 @@ void* server_connection_handler(void* arg)
     ImagePacket* text_packet_size = malloc(sizeof(ImagePacket));
     text_packet_size->header.type = 0x2;
     text_packet_size->header.size = sizeof(text_packet_size);
-    bytes_to_read = Packet_serialize(buffer, (PacketHeader*) text_packet_size);
+    int texture_size = Packet_serialize(buffer, (PacketHeader*) text_packet_size);
     char* quit_message = "quit";
     int quit_len = sizeof(quit_message);
 
@@ -168,7 +168,7 @@ void* server_connection_handler(void* arg)
         break;
       }
     //while(bytes_read < bytes_to_read) {
-      bytes_read = recv(tcp_socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, MSG_WAITALL);
+      bytes_read += recv(tcp_socket_desc, buffer+quit_len, texture_size-quit_len, MSG_WAITALL);
     //if (errno == EINTR) continue;
       ERROR_HELPER(bytes_read, "Cannot receive text req packet from client\n");
     //}
@@ -184,20 +184,12 @@ void* server_connection_handler(void* arg)
       text_req->image = vehicle->texture;
       text_req->header.size = sizeof(text_req);
       bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
-      printf("TEXTURE BYTES TO SEND: %d\n", bytes_to_send);
       ret = send(tcp_socket_desc, &bytes_to_send, sizeof(int), 0);
-      bytes_sent = 0;
-      while (bytes_sent < bytes_to_send) {
-          ret = send(tcp_socket_desc, buffer+bytes_sent, bytes_to_send-bytes_sent, 0);
-          if (errno == EINTR) continue;
-          ERROR_HELPER(ret, "Error sending texture to client that requested it\n");
-          bytes_sent += ret;
-      }
-
-      printf("texture: %d sent to client: %d!\n", text_req->id, client_id);
-      Packet_free((PacketHeader*) text_req);
-
+      bytes_sent = send(tcp_socket_desc, buffer, bytes_to_send, 0);
+      ERROR_HELPER(bytes_sent, "Error sending texture to client that requested it\n");
+      printf("texture: %d  (bytes: %d) sent to client: %d\n", text_req->id, bytes_sent, client_id);
     }
+
     if (DEBUG) printf("client: %d succesfully disconnected, closing handler thread\n", client_id);
     return 0;
 }

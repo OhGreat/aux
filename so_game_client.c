@@ -25,7 +25,7 @@
 int window, halting_flag = 0;
 WorldViewer viewer;
 World world;
-Vehicle* vehicle; // The vehicle
+Vehicle* vehicle;
 
 char* global_server_addr;
 int tcp_socket;
@@ -178,14 +178,17 @@ int main(int argc, char **argv) {
   WorldViewer_runGlobal(&world, vehicle, &argc, argv);
   //cleanup
   World_destroy(&world);
-  return 0;
+  halting_flag = 1;
+  usleep(50000);
+  if (DEBUG) printf("Closing game, bye");
+  exit(0);
 }
 
 
 //handles wup received from server and calls unknown_veh_handler when needed
 void* wup_receiver (void* arg)
 {
-  usleep(100000);
+  usleep(10000);
   int ret, socket_desc, bytes_to_read;
   struct sockaddr_in client_addr;
   char buffer[1024*1024*5];
@@ -217,9 +220,7 @@ void* wup_receiver (void* arg)
       ERROR_HELPER(ret, "Error receiving wup size\n");
       if (bytes_to_read == 0) {
         halting_flag=1;
-        usleep(20000);
-        printf("Server is offline. Quitting game...\nBye.\n");
-        exit(0);
+        break;
       }
       if (DEBUG) printf("WUP || size of wup received: %d\n", bytes_to_read);
       ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
@@ -227,16 +228,16 @@ void* wup_receiver (void* arg)
       wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
 
       update_n_veh = wup->num_vehicles;
-      if (DEBUG) printf("n of clints in update = %d\n", update_n_veh);
+      if (DEBUG) printf("n of clients in update = %d\n", update_n_veh);
       for (i=0; i<update_n_veh; i++)
       {
         current_veh = World_getVehicle(args->world, wup->updates[i].id);
         if (current_veh == 0)
         {
-          //unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
-          Vehicle* veh = malloc(sizeof(Vehicle));
-          Vehicle_init(veh, args->world, wup->updates[i].id, args->texture);
-          World_addVehicle(args->world, veh);
+          unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
+          //Vehicle* veh = malloc(sizeof(Vehicle));
+          //Vehicle_init(veh, args->world, wup->updates[i].id, args->texture);
+          //World_addVehicle(args->world, veh);
 
         }
       }
@@ -268,10 +269,12 @@ void* wup_receiver (void* arg)
       }
       if (DEBUG) printf("WUP || wup read succesfully\n");
   }
+  usleep(100000);
   if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
   ret = close(socket_desc);
   ERROR_HELPER(ret, "Error closing wup socket desc\n");
-  return 0;
+  printf("Server is offline. Quitting game...\nBye.\n");
+  exit(0);
 }
 
 
@@ -307,9 +310,6 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
         Vehicle* veh = malloc(sizeof(Vehicle));
         Vehicle_init(veh, world, id, texture->image);
         World_addVehicle(world, veh);
-        veh->x = cl_up.x;
-        veh->y = cl_up.y;
-        veh->theta = cl_up.theta;
         if (DEBUG) printf("texture of veh n. %d received succesfully: %d bytes\n", id, bytes_to_read);
     }
     else {
@@ -320,6 +320,7 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
 
 void* client_updater_for_server(void* arg)
 {
+    usleep(10000);
     cl_up_args* args = (cl_up_args*) arg;
     int ret=0, bytes_to_send, bytes_sent, socket_desc;
     struct sockaddr_in server_addr;

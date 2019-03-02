@@ -151,20 +151,7 @@ int main(int argc, char **argv) {
   ret = pthread_detach(cl_thread);
   PTHREAD_ERROR_HELPER(ret, "Could not detach cl_up handler thread");
   if (DEBUG) printf("Spawned thread to handle cl_up from clients\n");
-/*
-  //creating texture handler socket and thread********************************
-  int texture_handler_socket;
-  struct sockaddr_in texture_addr;
-  texture_addr.sin_family = AF_INET;
-  texture_addr.sin_port = htons(SERVER_TEXTURE_HANDLER_PORT);
-  texture_addr.sin_addr.s_addr = INADDR_ANY;
 
-  texture_handler_socket = socket(AF_INET, SOCK_DGRAM, 0);
-  ERROR_HELPER(texture_handler_socket, "Error creating texture handler socket\n");
-
-  ret = bind(texture_handler_socket, (struct sockaddr*) &texture_addr, sizeof(texture_addr));
-  ERROR_HELPER(ret, "Error binding address to texture handler socket\n");
-*/
   // creating tcp_socket and accepting new connections to be handled by a thread
   int tcp_socket_desc, tcp_client_desc;
   struct sockaddr_in tcp_server_addr = {0};
@@ -249,13 +236,6 @@ void* wup_sender(void* arg) {
     ListHead* client_list = args->client_list;
     int n_clients;
 
-/*
-    wup_sender_desc = socket(AF_INET, SOCK_DGRAM, 0);
-    ERROR_HELPER(wup_sender_thread, "Could not create socket to send wup \n");
-    int broadcastPermission = 1;
-    if (setsockopt(wup_sender_thread, SOL_SOCKET, SO_BROADCAST, (void*) &broadcastPermission, sizeof(broadcastPermission)) < 0)
-      ERROR_HELPER(-1, "Failed setting broadcast permission to wup sender\n");
-*/
     while (halting_flag==0) {
 
         sem_t* wup_sem = sem_open(WUP_SEM, 0);
@@ -352,7 +332,7 @@ void* cl_up_handler (void* arg) {
 
 void quit_handler(int sig) {
   halting_flag = 1;
-  usleep(50000);
+  usleep(100000);
   int ret=0, bytes_sent = 0;
   int val= 0;
 
