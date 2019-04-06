@@ -188,7 +188,7 @@ int main(int argc, char **argv) {
 //handles wup received from server and calls unknown_veh_handler when needed
 void* wup_receiver (void* arg)
 {
-  usleep(10000);
+  //usleep(200000); non funziona..
   int ret, socket_desc, bytes_to_read;
   struct sockaddr_in client_addr;
   char buffer[1024*1024*5];
@@ -234,14 +234,18 @@ void* wup_receiver (void* arg)
         current_veh = World_getVehicle(args->world, wup->updates[i].id);
         if (current_veh == 0)
         {
-          unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world, wup->updates[i]);
-          //Vehicle* veh = malloc(sizeof(Vehicle));
-          //Vehicle_init(veh, args->world, wup->updates[i].id, args->texture);
-          //World_addVehicle(args->world, veh);
+          if (DEBUG) printf("Starting acquisition of player: %d texture\n", wup->updates[i].id);
+          Image* img_txt = unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world);
+          printf("sizeof img_txt recved : %lo\n", sizeof(img_txt));
+          Vehicle* veh = malloc(sizeof(Vehicle));
+          if (DEBUG && veh == 0) printf("texture received of veh: %d is 0\n", wup->updates[i].id);
+          Vehicle_init(veh, args->world, wup->updates[i].id, img_txt);
+          World_addVehicle(args->world, veh);
+          if (DEBUG) printf("player: %d added succesfully to game\n", wup->updates[i].id);
 
         }
       }
-      if (DEBUG) printf("successfully received all new client textures\n");
+
       world_n_veh = args->world->vehicles.size;
       list_item = args->vehicles.first;
       for (i=0; i < world_n_veh; i++)
@@ -279,21 +283,20 @@ void* wup_receiver (void* arg)
 
 
 //handles texture requests and adds vehicle to world
-void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, World* world, ClientUpdate cl_up)
+Image* unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, World* world)
 {
-    int ret, bytes_to_read, bytes_to_send;
+    int ret, bytes_to_send;
+    unsigned long int bytes_to_read;
     char buffer[1024*1024*5];
 
-    ImagePacket* texture;
-    texture = malloc(sizeof(ImagePacket));
+    ImagePacket* texture = malloc(sizeof(ImagePacket));
     texture->id = id;
     texture->image = NULL;
     texture->header.type = 0x2;
-    texture->header.size = sizeof(ImagePacket);
+    texture->header.size = sizeof(texture);
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture);
 
     ret = send(socket_desc, buffer, bytes_to_send, 0);
-
     if (DEBUG) printf("texture request of veh n. %d sent to server\n", id);
 
     ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
@@ -307,20 +310,23 @@ void unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Worl
 
     if (texture->id == id && texture->image != NULL) {
 
-        Vehicle* veh = malloc(sizeof(Vehicle));
-        Vehicle_init(veh, world, id, texture->image);
-        World_addVehicle(world, veh);
-        if (DEBUG) printf("texture of veh n. %d received succesfully: %d bytes\n", id, bytes_to_read);
+        //Vehicle* veh = malloc(sizeof(Vehicle));
+        //Vehicle_init(veh, world, id, texture->image);
+        //World_addVehicle(world, veh);
+        if (DEBUG) printf("texture of veh n. %d received succesfully: %ld bytes\n", id,sizeof(texture->image));
+        return texture->image;
     }
     else {
       Packet_free((PacketHeader*) texture);
       if (DEBUG) printf("texture of veh n: %d is NULL... aborted\n", id);
+      return 0;
     }
+
 }
 
 void* client_updater_for_server(void* arg)
 {
-    usleep(10000);
+    //usleep(10000);
     cl_up_args* args = (cl_up_args*) arg;
     int ret=0, bytes_to_send, bytes_sent, socket_desc;
     struct sockaddr_in server_addr;
@@ -347,7 +353,7 @@ void* client_updater_for_server(void* arg)
         bytes_sent = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
 
         if (DEBUG) printf("sent client update [%d bytes] packet to server\n", bytes_sent);
-        usleep(40000);
+        usleep(30000);
     }
     if (DEBUG) printf("halting flag: %d cl_up sender thread is closing\n", halting_flag);
     ret = close(socket_desc);
