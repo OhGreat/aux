@@ -153,9 +153,9 @@ void* server_connection_handler(void* arg)
         wup_cl_remove(wup, client_id, args->client_list, client, args->world, veh);
         break;
       }
-      sem = sem_open(WUP_SEM, 0);
-      ret = sem_wait(sem);
-      ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+      //sem = sem_open(WUP_SEM, 0);
+      //ret = sem_wait(sem);
+      //ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
     //while(bytes_read < bytes_to_read) {
       bytes_read += recv(tcp_socket_desc, buffer+quit_len, texture_size-quit_len, MSG_WAITALL);
     //if (errno == EINTR) continue;
@@ -171,17 +171,17 @@ void* server_connection_handler(void* arg)
       vehicle = World_getVehicle(args->world, text_req->id);
       text_req->header.type = 0x4;
       text_req->image = vehicle->texture;
-      text_req->header.size = sizeof(text_req);
+      text_req->header.size = sizeof(ImagePacket);
       bytes_to_send = Packet_serialize(buffer, (PacketHeader*) text_req);
       ret = send(tcp_socket_desc, &bytes_to_send, HEADER_SIZE, 0);
       bytes_sent = send(tcp_socket_desc, buffer, bytes_to_send, 0);
       ERROR_HELPER(bytes_sent, "Error sending texture to client that requested it\n");
       printf("texture: %d  (bytes: %d) sent to client: %d\n", text_req->id, bytes_sent, client_id);
-      usleep(10000);
-      ret = sem_post(sem);
-      ERROR_HELPER(ret, "Could not post wup sem\n");
-      ret = sem_close(sem);
-      ERROR_HELPER(ret, "Cannot close wup sem\n");
+      //usleep(10000);
+      //ret = sem_post(sem);
+      //ERROR_HELPER(ret, "Could not post wup sem\n");
+      //ret = sem_close(sem);
+      //ERROR_HELPER(ret, "Cannot close wup sem\n");
     }
 
     if (DEBUG) printf("client: %d succesfully disconnected, closing handler thread\n", client_id);

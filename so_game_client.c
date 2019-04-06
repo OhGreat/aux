@@ -301,10 +301,7 @@ Image* unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Wo
 
     ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
     ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
-
     ERROR_HELPER(ret, "Problem with ret in texture receiver\n");
-
-
 
     texture = (ImagePacket*) Packet_deserialize(buffer, bytes_to_read);
 
@@ -313,7 +310,7 @@ Image* unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Wo
         //Vehicle* veh = malloc(sizeof(Vehicle));
         //Vehicle_init(veh, world, id, texture->image);
         //World_addVehicle(world, veh);
-        if (DEBUG) printf("texture of veh n. %d received succesfully: %ld bytes\n", id,sizeof(texture->image));
+        if (DEBUG) printf("texture of veh n. %d received succesfully: %ld bytes\n", id,bytes_to_read);
         return texture->image;
     }
     else {
