@@ -81,8 +81,8 @@ int main(int argc, char **argv) {
 
 
   //creating worldupdatepacket and client_list to share with clients
-  ListHead* client_list = malloc(sizeof(ListHead));
-  List_init(client_list);
+  //ListHead* client_list = malloc(sizeof(ListHead));
+  //List_init(client_list);
 
   WorldUpdatePacket* wup = malloc(sizeof(WorldUpdatePacket));
   wup->header.type = 0x6;
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
 
   pthread_t wup_sender_thread;
   wup_sender_args* wup_thread_args = malloc(sizeof(wup_sender_args));
-  wup_thread_args->client_list = client_list;
+  wup_thread_args->world = world;
   wup_thread_args->wup = wup;
   wup_thread_args->wup_sender_desc = wup_sender_desc;
   ret = pthread_create(&wup_sender_thread, NULL, wup_sender, (void *) wup_thread_args);
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
   //thread to handle client updates*******************************************
   cl_up_args* cl_args = malloc(sizeof(cl_up_args));
   cl_args->wup = wup;
-  cl_args->client_list = client_list;
+  //cl_args->client_list = client_list;
   cl_args->world = world;
   cl_args->cl_up_socket = cl_up_recv_sock;
   pthread_t cl_thread;
@@ -201,7 +201,7 @@ int main(int argc, char **argv) {
       thread_args->world = world;
       thread_args->map_info = map_info;
       thread_args->wup = wup;
-      thread_args->client_list = client_list;
+      //thread_args->client_list = client_list;
 
       ret = pthread_create(&client_handler_thread, NULL, server_connection_handler, (void *)thread_args);
       PTHREAD_ERROR_HELPER(ret, "Could not create a new thread\n");
@@ -229,11 +229,11 @@ void* wup_sender(void* arg) {
     client_addr.sin_port = htons(CLIENT_WUP_RECEIVER_PORT);
     client_addr.sin_addr.s_addr = inet_addr(CLIENT_BROADCAST_ADDR);
 
-    char buffer[1024*1024*5];
+    char buffer[1024*1024*2];
     wup_sender_args* args = (wup_sender_args*) arg;
     socket_desc = args->wup_sender_desc;
 
-    ListHead* client_list = args->client_list;
+    //ListHead* client_list = args->client_list;
     int n_clients;
 
     while (halting_flag==0) {
@@ -243,7 +243,7 @@ void* wup_sender(void* arg) {
         ret = sem_wait(wup_sem);
         ERROR_HELPER(ret, "Cannot wait wup sem\n");
 
-        n_clients = client_list->size;
+        n_clients = args->world->vehicles.size;
         printf("n connected clients:%d\n",n_clients);
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) args->wup);
 
@@ -284,11 +284,12 @@ void* cl_up_handler (void* arg) {
   vup->header.type = 0x7;
   int bytes_to_read = Packet_serialize(buffer, (PacketHeader*) vup);
   Packet_free((PacketHeader*) vup);
+  int cl_up_sock = args->cl_up_socket;
 
 
   //sem_t* sem;
   while(halting_flag == 0) {
-      ret = recv(args->cl_up_socket, buffer, bytes_to_read, MSG_WAITALL);
+      ret = recv(cl_up_sock, buffer, bytes_to_read, MSG_WAITALL);
       ERROR_HELPER(ret, "Error reciving cl_up\n");
 
       vup = (VehicleUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
@@ -320,8 +321,9 @@ void* cl_up_handler (void* arg) {
           }
 
       else {
-        printf("how did we end up here?\n");
+        printf("why did we end up here?\n");
       }
+      Packet_free( (PacketHeader*) vup);
     }
     ret = close(args->cl_up_socket);
     ERROR_HELPER(ret,"Error closing cl_up_socket!\n");

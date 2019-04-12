@@ -48,23 +48,17 @@ void* server_connection_handler(void* arg)
     if (DEBUG) printf("id sent succesfully to client: %d\n", client_id);
 
 
-    //receiving texture
+    //receiving client texture
     if (DEBUG) printf("waiting to receive client texture...\n");
     bytes_read = 0;
     bytes_to_read = message_size_getter(tcp_socket_desc, HEADER_SIZE);
-    while (bytes_read < bytes_to_read)
-    {
-        ret = recv(tcp_socket_desc, buffer+bytes_read, bytes_to_read-bytes_read, 0);
-        if (ret ==-1 && errno == EINTR) continue;
-        ERROR_HELPER(ret, "Cannot recv texture from client\n");
-        bytes_read += ret;
-    }
+    bytes_read = recv(tcp_socket_desc, buffer, bytes_to_read, MSG_WAITALL);
     ImagePacket* texture_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
     if (texture_packet->id != client_id || texture_packet->header.type != 0x4)
         ERROR_HELPER(-1, "Id or packet type not corresponding to client, closing connection\n");
-    if (DEBUG) printf("Client: %d texture received successfully\n", client_id);
-
-
+    if (DEBUG) printf("Client: %d texture received successfully, total bytes: %d\n", client_id, bytes_read);
+    Image* cl_texture = texture_packet->image;
+    printf("rows: %d, cols: %d, channels: %d, data: %ld, row_data: %ld\n", cl_texture->rows, cl_texture->cols, cl_texture->channels, sizeof(cl_texture->data), sizeof(cl_texture->row_data));
     //sending map texture
     ImagePacket* map_texture = malloc(sizeof(ImagePacket));
     map_texture->id = 0;
@@ -107,27 +101,27 @@ void* server_connection_handler(void* arg)
 
 
     //adding client to client_list and wup
-    Client_info* client = malloc(sizeof(Client_info));
-    client->id = client_id;
-    client->client_addr = args->client_addr;
+    //Client_info* client = malloc(sizeof(Client_info));
+    //client->id = client_id;
+    //client->client_addr = args->client_addr;
     Vehicle* veh = (Vehicle*) malloc(sizeof(Vehicle));
     Vehicle_init(veh, args->world, client_id, texture_packet->image);
-    client->veh = veh;
+    //client->veh = veh;
     if (DEBUG) printf("Logging client into game...\n");
     sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
-    List_insert(args->client_list, args->client_list->last, (ListItem*) client);
+    //List_insert(args->client_list, args->client_list->last, (ListItem*) client);
     World_addVehicle(args->world, veh);
     WorldUpdatePacket* wup = args->wup;
     wup->num_vehicles += 1;
     wup->updates = (ClientUpdate*) realloc(wup->updates, sizeof(ClientUpdate)*(wup->num_vehicles));
     wup->updates[wup->num_vehicles -1].id = client_id;
-    ClientUpdate* cl_up = &(wup->updates[wup->num_vehicles -1]);
-    cl_up->x = veh->x;
-    cl_up->y = veh->y;
-    cl_up->theta = veh->theta;
-    client->cl_up = cl_up;
+    //ClientUpdate* cl_up = &(wup->updates[wup->num_vehicles -1]);
+    //cl_up->x = veh->x;
+    //cl_up->y = veh->y;
+    //cl_up->theta = veh->theta;
+    //client->cl_up = cl_up;
     ret = sem_post(sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
     ret = sem_close(sem);
@@ -150,12 +144,12 @@ void* server_connection_handler(void* arg)
       bytes_read = recv(tcp_socket_desc, buffer, quit_len, 0);
       ERROR_HELPER(ret, "Error receiving quit message from cl\n");
       if (strncmp(quit_message, buffer, quit_len) == 0) {
-        wup_cl_remove(wup, client_id, args->client_list, client, args->world, veh);
+        wup_cl_remove(wup, client_id, args->world, veh);
         break;
       }
-      //sem = sem_open(WUP_SEM, 0);
-      //ret = sem_wait(sem);
-      //ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+      sem = sem_open(WUP_SEM, 0);
+      ret = sem_wait(sem);
+      ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
     //while(bytes_read < bytes_to_read) {
       bytes_read += recv(tcp_socket_desc, buffer+quit_len, texture_size-quit_len, MSG_WAITALL);
     //if (errno == EINTR) continue;
@@ -177,11 +171,11 @@ void* server_connection_handler(void* arg)
       bytes_sent = send(tcp_socket_desc, buffer, bytes_to_send, 0);
       ERROR_HELPER(bytes_sent, "Error sending texture to client that requested it\n");
       printf("texture: %d  (bytes: %d) sent to client: %d\n", text_req->id, bytes_sent, client_id);
-      //usleep(10000);
-      //ret = sem_post(sem);
-      //ERROR_HELPER(ret, "Could not post wup sem\n");
-      //ret = sem_close(sem);
-      //ERROR_HELPER(ret, "Cannot close wup sem\n");
+      usleep(10000);
+      ret = sem_post(sem);
+      ERROR_HELPER(ret, "Could not post wup sem\n");
+      ret = sem_close(sem);
+      ERROR_HELPER(ret, "Cannot close wup sem\n");
     }
 
     if (DEBUG) printf("client: %d succesfully disconnected, closing handler thread\n", client_id);
@@ -190,7 +184,7 @@ void* server_connection_handler(void* arg)
 
 
 
-void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list, Client_info* client, World* world, Vehicle* veh)
+void wup_cl_remove(WorldUpdatePacket* wup, int client_id, World* world, Vehicle* veh)
 {
     int ret, i, j=0, n_veh= wup->num_vehicles;
     WorldUpdatePacket* new = malloc(sizeof(WorldUpdatePacket));
@@ -213,7 +207,7 @@ void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list,
     free(wup->updates);
     wup->updates = new->updates;
     wup->num_vehicles = n_veh-1;
-    List_detach(client_list, (ListItem*) client);
+    //List_detach(client_list, (ListItem*) client);
     World_detachVehicle(world, veh);
     ret = sem_post(wup_sem);
     ERROR_HELPER(ret, "Cannot post wup sem\n");

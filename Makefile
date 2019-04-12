@@ -54,7 +54,7 @@ so_game: so_game.c libso_game.a
 	$(CC) $(CCOPTS) -Ofast -o $@ $^ $(LIBS)
 
 so_game_server: so_game_server.c libso_game.a
-	$(CC) $(CCOPTS) -Ofast -o $@ $^ $(LIBS)
+	$(CC) $(CCOPTS) -Ofast -g -o $@ $^ $(LIBS)
 
 so_game_client: so_game_client.c libso_game.a
 	$(CC) $(CCOPTS) -Ofast -g -o $@ $^ $(LIBS)

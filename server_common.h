@@ -43,7 +43,7 @@ typedef struct {
 } Client_info;
 
 typedef struct {
-    ListHead* client_list;
+    World* world;
     WorldUpdatePacket* wup;
     int wup_sender_desc;
 } wup_sender_args;
@@ -64,5 +64,5 @@ void quit_handler(int sig);
 void sem_cleanup(void);
 void* wup_sender(void* arg);
 void* texture_request_handler(void* arg);
-void wup_cl_remove(WorldUpdatePacket* wup, int client_id, ListHead* client_list, Client_info* client, World* world, Vehicle* veh);
+void wup_cl_remove(WorldUpdatePacket* wup, int client_id, World* world, Vehicle* veh);
 void* cl_up_handler (void* arg);

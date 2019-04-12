@@ -39,6 +39,7 @@ int main(int argc, char **argv) {
   printf("loading texture image from %s ... ", argv[2]);
   Image* my_texture = Image_load(argv[2]);
   if (my_texture) {
+    printf("rows: %d, cols: %d, channels: %d, data: %ld, row_data: %ld\n", my_texture->rows, my_texture->cols, my_texture->channels, sizeof(my_texture->data), sizeof(my_texture->row_data));
     printf("Done! \n");
   } else {
     printf("Fail! \n");
@@ -53,6 +54,8 @@ int main(int argc, char **argv) {
   //main socket for client connection*****************************************
   main_socket_desc = socket(AF_INET, SOCK_STREAM, 0);
   ERROR_HELPER(main_socket_desc, "Could not create socket\n");
+  int value = 5;
+  setsockopt(main_socket_desc,SOL_SOCKET,SO_REUSEADDR, &value, sizeof(int));
 
   server_addr.sin_addr.s_addr = inet_addr(argv[1]);
   server_addr.sin_family      = AF_INET;
@@ -64,6 +67,7 @@ int main(int argc, char **argv) {
 
   tcp_socket = main_socket_desc;
   signal(SIGINT, quit_handler);
+  signal(SIGSEGV, quit_handler);
 
   //requesting id to server
   IdPacket *id_packet = malloc(sizeof(IdPacket));
@@ -97,6 +101,12 @@ int main(int argc, char **argv) {
   texture_packet->image = my_texture;
   texture_packet->header.type = 0x4;
   texture_packet->header.size = sizeof(texture_packet);
+  bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture_packet);
+  ret = send(main_socket_desc, &bytes_to_send, HEADER_SIZE, 0);
+  bytes_sent = send(main_socket_desc, buffer, bytes_to_send, 0);
+  if (DEBUG) printf("texture sent succesfully, bytes: %d\n", bytes_sent);
+
+  /*
   bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) texture_packet);
   memcpy(buffer, &bytes_to_send, HEADER_SIZE);
   bytes_to_send += HEADER_SIZE;
@@ -107,6 +117,7 @@ int main(int argc, char **argv) {
     ERROR_HELPER(ret, "Cannot send vehicle texture to server\n");
     bytes_sent += ret;
   }
+  */
   if (DEBUG) printf("vehicle texture sent succesfully to server, written: %d bytes\n", bytes_to_send);
 
   //receiving map texture from server
@@ -211,6 +222,9 @@ void* wup_receiver (void* arg)
   ret = bind(socket_desc, (struct sockaddr*) &client_addr, sizeof(client_addr));
   ERROR_HELPER( ret, "Error binding wup receiver port to socket\n");
 
+  signal(SIGINT, quit_handler);
+  signal(SIGSEGV, quit_handler);
+
 
   while (halting_flag == 0)
   {
@@ -235,10 +249,11 @@ void* wup_receiver (void* arg)
         if (current_veh == 0)
         {
           if (DEBUG) printf("Starting acquisition of player: %d texture\n", wup->updates[i].id);
-          Image* img_txt = unknown_veh_handler(args->tcp_socket, args->server_addr, wup->updates[i].id, args->world);
-          printf("sizeof img_txt recved : %lo\n", sizeof(img_txt));
+          Image* img_txt = unknown_veh_handler(args->tcp_socket, wup->updates[i].id, args->world);
+          //printf("sizeof img_txt recved : %lo\n", sizeof(img_txt));
           Vehicle* veh = malloc(sizeof(Vehicle));
-          if (DEBUG && veh == 0) printf("texture received of veh: %d is 0\n", wup->updates[i].id);
+          //if (DEBUG && veh == 0) printf("texture received of veh: %d is 0\n", wup->updates[i].id);
+          //Image* new_texture = Image_load("images/test.ppm");
           Vehicle_init(veh, args->world, wup->updates[i].id, img_txt);
           World_addVehicle(args->world, veh);
           if (DEBUG) printf("player: %d added succesfully to game\n", wup->updates[i].id);
@@ -272,8 +287,9 @@ void* wup_receiver (void* arg)
         list_item = list_item->next;
       }
       if (DEBUG) printf("WUP || wup read succesfully\n");
+      Packet_free((PacketHeader*) wup);
   }
-  usleep(100000);
+  //usleep(100000);
   if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
   ret = close(socket_desc);
   ERROR_HELPER(ret, "Error closing wup socket desc\n");
@@ -283,11 +299,11 @@ void* wup_receiver (void* arg)
 
 
 //handles texture requests and adds vehicle to world
-Image* unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, World* world)
+Image* unknown_veh_handler(int socket_desc, int id, World* world)
 {
     int ret, bytes_to_send;
     unsigned long int bytes_to_read;
-    char buffer[1024*1024*5];
+    char buffer[1024*1024];
 
     ImagePacket* texture = malloc(sizeof(ImagePacket));
     texture->id = id;
@@ -297,12 +313,14 @@ Image* unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, Wo
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture);
 
     ret = send(socket_desc, buffer, bytes_to_send, 0);
+    ERROR_HELPER(ret, "Problem with ret in texture receiver 1 \n");
     if (DEBUG) printf("texture request of veh n. %d sent to server\n", id);
 
     ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
+    ERROR_HELPER(ret, "Problem with ret in texture receiver 2 \n");
     ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
-    ERROR_HELPER(ret, "Problem with ret in texture receiver\n");
-
+    ERROR_HELPER(ret, "Problem with ret in texture receiver 3\n");
+    Packet_free((PacketHeader*) texture);
     texture = (ImagePacket*) Packet_deserialize(buffer, bytes_to_read);
 
     if (texture->id == id && texture->image != NULL) {

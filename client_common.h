@@ -9,7 +9,7 @@
 #define HEADER_SIZE 4
 
 void* wup_receiver(void* arg);
-Image* unknown_veh_handler(int socket_desc, struct sockaddr_in* addr, int id, World* world);
+Image* unknown_veh_handler(int socket_desc, int id, World* world);
 void quit_handler(int sig);
 void quit_handler_for_main(void);
 void* client_updater_for_server(void* arg);
