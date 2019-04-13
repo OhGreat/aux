@@ -291,11 +291,13 @@ void* wup_receiver (void* arg)
       Packet_free((PacketHeader*) wup);
   }
   //usleep(100000);
-  if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
+  if (DEBUG) printf("Connection lost. halting flag: %d wup receiver is closing\n", halting_flag);
+  usleep(50000);
+  World_destroy(&world);
   ret = close(socket_desc);
   ERROR_HELPER(ret, "Error closing wup socket desc\n");
-  printf("Disconnecting.. closing wup receiver..\nBye.\n");
-  return 0;
+  printf("Disconnecting.. \nBye.\n");
+  exit(0);
 }
 
 
