@@ -188,10 +188,10 @@ int main(int argc, char **argv) {
 
   WorldViewer_runGlobal(&world, vehicle, &argc, argv);
   //cleanup
-  World_destroy(&world);
+  //World_destroy(&world);
   //quit_handler(1);
   halting_flag = 1;
-  usleep(50000);
+  usleep(500000);
   if (DEBUG) printf("Closing game, bye");
   exit(0);
 }
@@ -395,6 +395,7 @@ void quit_handler(int sig)
     ret = close(tcp_socket);
     ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
     usleep(50000);
+    World_destroy(&world);
     exit(0);
 }
 
