@@ -216,7 +216,6 @@ int main(int argc, char **argv) {
   }
 
   sem_cleanup();
-
   return 0;
 }
 
@@ -269,7 +268,7 @@ void* wup_sender(void* arg) {
 
 void* cl_up_handler (void* arg) {
   int ret;
-  char buffer[1024*1024*5];
+  char buffer[1024*1024*2];
   cl_up_args* args = (cl_up_args*) arg;
   Vehicle* veh;
   WorldUpdatePacket* wup = args->wup;

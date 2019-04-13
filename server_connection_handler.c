@@ -144,6 +144,7 @@ void* server_connection_handler(void* arg)
       bytes_read = recv(tcp_socket_desc, buffer, quit_len, 0);
       ERROR_HELPER(ret, "Error receiving quit message from cl\n");
       if (strncmp(quit_message, buffer, quit_len) == 0) {
+        if (DEBUG) printf("client: %d, disconnection request..\n", client_id);
         wup_cl_remove(wup, client_id, args->world, veh);
         break;
       }

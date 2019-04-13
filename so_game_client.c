@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     printf("Fail! \n");
   }
 
-  char buffer[1024*1024*5];
+  char buffer[1024*1024*2];
 
   int main_socket_desc, bytes_to_send, bytes_sent, bytes_to_read, bytes_read, ret;
   struct sockaddr_in server_addr = {0};
@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
 
   tcp_socket = main_socket_desc;
   signal(SIGINT, quit_handler);
-  signal(SIGSEGV, quit_handler);
+  //signal(SIGSEGV, quit_handler);
 
   //requesting id to server
   IdPacket *id_packet = malloc(sizeof(IdPacket));
@@ -189,6 +189,7 @@ int main(int argc, char **argv) {
   WorldViewer_runGlobal(&world, vehicle, &argc, argv);
   //cleanup
   World_destroy(&world);
+  //quit_handler(1);
   halting_flag = 1;
   usleep(50000);
   if (DEBUG) printf("Closing game, bye");
@@ -202,7 +203,7 @@ void* wup_receiver (void* arg)
   //usleep(200000); non funziona..
   int ret, socket_desc, bytes_to_read;
   struct sockaddr_in client_addr;
-  char buffer[1024*1024*5];
+  char buffer[1024*1024];
   wup_receiver_args* args = (wup_receiver_args*) arg;
   int i, j, update_n_veh, world_n_veh;
   WorldUpdatePacket* wup;
@@ -222,8 +223,8 @@ void* wup_receiver (void* arg)
   ret = bind(socket_desc, (struct sockaddr*) &client_addr, sizeof(client_addr));
   ERROR_HELPER( ret, "Error binding wup receiver port to socket\n");
 
-  signal(SIGINT, quit_handler);
-  signal(SIGSEGV, quit_handler);
+  //signal(SIGINT, quit_handler);
+  //signal(SIGSEGV, quit_handler);
 
 
   while (halting_flag == 0)
@@ -293,8 +294,8 @@ void* wup_receiver (void* arg)
   if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
   ret = close(socket_desc);
   ERROR_HELPER(ret, "Error closing wup socket desc\n");
-  printf("Server is offline. Quitting game...\nBye.\n");
-  exit(0);
+  printf("Disconnecting.. closing wup receiver..\nBye.\n");
+  return 0;
 }
 
 
@@ -381,25 +382,18 @@ void quit_handler(int sig)
 {
     halting_flag = 1;
     usleep(60000);
-    int ret, bytes_sent, bytes_to_send;
+    int ret, bytes_to_send;
     char* buffer = "quit";
-
-
-    bytes_sent = 0;
     bytes_to_send = sizeof(buffer);
-    while (bytes_sent < bytes_to_send)
-    {
-      ret = send(tcp_socket, buffer+bytes_sent, bytes_to_send- bytes_sent, 0);
-      ERROR_HELPER(ret, "Could not send quit msg to server!\n");
-      bytes_sent +=ret;
-    }
+
+    ret = send(tcp_socket, buffer, bytes_to_send, 0);
+    ERROR_HELPER(ret, "Could not send quit msg to server!\n");
+
     if (DEBUG) printf("quit message: (%d bytes) sent to server, exiting...\n", bytes_to_send);
     ret = close(tcp_socket);
-
     ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
     usleep(50000);
     exit(0);
-
 }
 
 void quit_handler_for_main()
@@ -421,6 +415,4 @@ void quit_handler_for_main()
     if (DEBUG) printf("quit message: (%d bytes) sent to server, exiting...\n", bytes_to_send);
     ret = close(tcp_socket);
     ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
-
-
 }
