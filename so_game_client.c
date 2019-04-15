@@ -9,6 +9,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <semaphore.h>
+#include <assert.h>
+#include <fcntl.h>
 
 #include "image.h"
 #include "surface.h"
@@ -19,7 +22,6 @@
 #include "error_helper.h"
 #include "client_common.h"
 #include "common.c"
-#include <assert.h>
 
 
 int window, halting_flag = 0;
@@ -29,6 +31,7 @@ Vehicle* vehicle;
 
 char* global_server_addr;
 int tcp_socket;
+sem_t* wup_sem;
 
 int main(int argc, char **argv) {
   if (argc<3) {
@@ -50,6 +53,17 @@ int main(int argc, char **argv) {
   int main_socket_desc, bytes_to_send, bytes_sent, bytes_to_read, bytes_read, ret;
   struct sockaddr_in server_addr = {0};
   global_server_addr = argv[1];
+
+  sem_cleanup();
+  wup_sem = sem_open(SEM, O_CREAT | O_EXCL, 0600, 1);
+  if (wup_sem == SEM_FAILED && errno == EEXIST) {
+      sem_unlink(SEM);
+      wup_sem = sem_open(SEM, O_CREAT | O_EXCL, 0600, 1);
+  }
+  if (wup_sem == SEM_FAILED) {
+      printf("[FATAL ERROR] could not open wup_sem, the reason is: %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+  }
 
   //main socket for client connection*****************************************
   main_socket_desc = socket(AF_INET, SOCK_STREAM, 0);
@@ -187,13 +201,11 @@ int main(int argc, char **argv) {
   if (DEBUG) printf("Created thread to receive wup from server\n");
 
   WorldViewer_runGlobal(&world, vehicle, &argc, argv);
+
   //cleanup
-  //World_destroy(&world);
   //quit_handler(1);
-  halting_flag = 1;
-  usleep(500000);
-  if (DEBUG) printf("Closing game, bye");
-  exit(0);
+  World_destroy(&world);
+  //exit(0);
 }
 
 
@@ -226,24 +238,30 @@ void* wup_receiver (void* arg)
   //signal(SIGINT, quit_handler);
   //signal(SIGSEGV, quit_handler);
 
-
-  while (halting_flag == 0)
+  sem_t* sem = sem_open(SEM, 0);
+  while (!halting_flag)
   {
 
       if (DEBUG) printf("WUP || waiting to receive next wup\n");
       ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
       ERROR_HELPER(ret, "Error receiving wup size\n");
       if (bytes_to_read == 0) {
-        halting_flag=1;
-        break;
+
+        if (DEBUG) printf("Connection lost on server side. halting flag: %d wup receiver is closing\n", halting_flag);
+        ret = close(socket_desc);
+        ERROR_HELPER(ret, "Error closing wup socket desc\n");
+        quit_handler_for_main();
+        return 0;
       }
       if (DEBUG) printf("WUP || size of wup received: %d\n", bytes_to_read);
       ret = recv(socket_desc, buffer, bytes_to_read, MSG_WAITALL);
       printf("WUP || wup bytes read = %d\n", ret);
       wup = (WorldUpdatePacket*) Packet_deserialize( buffer, bytes_to_read);
-
       update_n_veh = wup->num_vehicles;
       if (DEBUG) printf("n of clients in update = %d\n", update_n_veh);
+
+      ret = sem_wait(sem);
+      ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
       for (i=0; i<update_n_veh; i++)
       {
         current_veh = World_getVehicle(args->world, wup->updates[i].id);
@@ -258,7 +276,6 @@ void* wup_receiver (void* arg)
           Vehicle_init(veh, args->world, wup->updates[i].id, img_txt);
           World_addVehicle(args->world, veh);
           if (DEBUG) printf("player: %d added succesfully to game\n", wup->updates[i].id);
-
         }
       }
 
@@ -287,17 +304,16 @@ void* wup_receiver (void* arg)
 
         list_item = list_item->next;
       }
-      if (DEBUG) printf("WUP || wup read succesfully\n");
+      ret = sem_post(sem);
+      ERROR_HELPER(ret, "Could not post wup sem\n");
       Packet_free((PacketHeader*) wup);
   }
-  //usleep(100000);
-  if (DEBUG) printf("Connection lost. halting flag: %d wup receiver is closing\n", halting_flag);
-  usleep(50000);
-  World_destroy(&world);
+  ret = sem_close(sem);
+  if (DEBUG) printf("WUP || wup read succesfully\n");
   ret = close(socket_desc);
   ERROR_HELPER(ret, "Error closing wup socket desc\n");
-  printf("Disconnecting.. \nBye.\n");
-  exit(0);
+  if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
+  return 0;
 }
 
 
@@ -314,6 +330,8 @@ Image* unknown_veh_handler(int socket_desc, int id, World* world)
     texture->header.type = 0x2;
     texture->header.size = sizeof(texture);
     bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture);
+
+
 
     ret = send(socket_desc, buffer, bytes_to_send, 0);
     ERROR_HELPER(ret, "Problem with ret in texture receiver 1 \n");
@@ -340,6 +358,8 @@ Image* unknown_veh_handler(int socket_desc, int id, World* world)
       return 0;
     }
 
+
+
 }
 
 void* client_updater_for_server(void* arg)
@@ -359,7 +379,7 @@ void* client_updater_for_server(void* arg)
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(CL_UP_RECV_PORT);
 
-    while (halting_flag == 0)
+    while (!halting_flag)
     {
         veh_up->rotational_force = args->veh->rotational_force_update;
         veh_up->translational_force = args->veh->translational_force_update;
@@ -394,28 +414,48 @@ void quit_handler(int sig)
     if (DEBUG) printf("quit message: (%d bytes) sent to server, exiting...\n", bytes_to_send);
     ret = close(tcp_socket);
     ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
-    usleep(50000);
+
+    sem_t* sem = sem_open(SEM, 0);
+    ret = sem_wait(sem);
+    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+
     World_destroy(&world);
+
+    ret = sem_post(sem);
+    ERROR_HELPER(ret, "Could not post wup sem\n");
+    ret = sem_close(sem);
+    ERROR_HELPER(ret, "Cannot close wup sem\n");
+    if (DEBUG) printf("Closing game, bye\n");
     exit(0);
 }
 
 void quit_handler_for_main()
 {
     halting_flag = 1;
-    usleep(60000);
-    int ret, bytes_sent, bytes_to_send;
-    char* buffer = "quit";
+    usleep(500000);
+    int ret;
 
-
-    bytes_sent = 0;
-    bytes_to_send = sizeof(buffer);
-    while (bytes_sent < bytes_to_send)
-    {
-      ret = send(tcp_socket, buffer+bytes_sent, bytes_to_send- bytes_sent, 0);
-      ERROR_HELPER(ret, "Could not send quit msg to server!\n");
-      bytes_sent +=ret;
-    }
-    if (DEBUG) printf("quit message: (%d bytes) sent to server, exiting...\n", bytes_to_send);
     ret = close(tcp_socket);
     ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
+
+
+    if (DEBUG) printf("Closing game, bye\n");
+
+    sem_t* sem = sem_open(SEM, 0);
+    ret = sem_wait(sem);
+    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+
+    World_destroy(&world);
+
+    ret = sem_post(sem);
+    ERROR_HELPER(ret, "Could not post wup sem\n");
+    ret = sem_close(sem);
+    ERROR_HELPER(ret, "Cannot close wup sem\n");
+    exit(0);
+}
+
+//sem cleanup func
+void sem_cleanup(void) {
+    sem_close(wup_sem);
+    sem_unlink(SEM);
 }
