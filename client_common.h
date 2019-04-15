@@ -8,7 +8,8 @@
 
 #define HEADER_SIZE 4
 
-#define SEM "/sem"
+#define WUP_SEM "/sem"
+#define CL_SEM "/cl_sem"
 
 void* wup_receiver(void* arg);
 Image* unknown_veh_handler(int socket_desc, int id, World* world);

@@ -32,6 +32,7 @@ Vehicle* vehicle;
 char* global_server_addr;
 int tcp_socket;
 sem_t* wup_sem;
+sem_t*cl_sem;
 
 int main(int argc, char **argv) {
   if (argc<3) {
@@ -54,13 +55,24 @@ int main(int argc, char **argv) {
   struct sockaddr_in server_addr = {0};
   global_server_addr = argv[1];
 
+  //creating semaphores to handle structures destrction and threads closing*****
   sem_cleanup();
-  wup_sem = sem_open(SEM, O_CREAT | O_EXCL, 0600, 1);
+  wup_sem = sem_open(WUP_SEM, O_CREAT | O_EXCL, 0600, 1);
   if (wup_sem == SEM_FAILED && errno == EEXIST) {
-      sem_unlink(SEM);
-      wup_sem = sem_open(SEM, O_CREAT | O_EXCL, 0600, 1);
+      sem_unlink(WUP_SEM);
+      wup_sem = sem_open(WUP_SEM, O_CREAT | O_EXCL, 0600, 1);
   }
   if (wup_sem == SEM_FAILED) {
+      printf("[FATAL ERROR] could not open wup_sem, the reason is: %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+  }
+
+  cl_sem = sem_open(CL_SEM, O_CREAT | O_EXCL, 0600, 1);
+  if (cl_sem == SEM_FAILED && errno == EEXIST) {
+      sem_unlink(CL_SEM);
+      wup_sem = sem_open(CL_SEM, O_CREAT | O_EXCL, 0600, 1);
+  }
+  if (cl_sem == SEM_FAILED) {
       printf("[FATAL ERROR] could not open wup_sem, the reason is: %s\n", strerror(errno));
       exit(EXIT_FAILURE);
   }
@@ -118,20 +130,6 @@ int main(int argc, char **argv) {
   bytes_to_send = Packet_serialize(buffer, (PacketHeader*) texture_packet);
   ret = send(main_socket_desc, &bytes_to_send, HEADER_SIZE, 0);
   bytes_sent = send(main_socket_desc, buffer, bytes_to_send, 0);
-  if (DEBUG) printf("texture sent succesfully, bytes: %d\n", bytes_sent);
-
-  /*
-  bytes_to_send = Packet_serialize(buffer+HEADER_SIZE, (PacketHeader*) texture_packet);
-  memcpy(buffer, &bytes_to_send, HEADER_SIZE);
-  bytes_to_send += HEADER_SIZE;
-  bytes_sent = 0;
-  while( bytes_sent < bytes_to_send) {
-      ret = send(main_socket_desc, buffer + bytes_sent, bytes_to_send - bytes_sent, 0);
-    if (errno == EINTR) continue;
-    ERROR_HELPER(ret, "Cannot send vehicle texture to server\n");
-    bytes_sent += ret;
-  }
-  */
   if (DEBUG) printf("vehicle texture sent succesfully to server, written: %d bytes\n", bytes_to_send);
 
   //receiving map texture from server
@@ -204,8 +202,9 @@ int main(int argc, char **argv) {
 
   //cleanup
   //quit_handler(1);
-  World_destroy(&world);
+  //World_destroy(&world);
   //exit(0);
+  return 0;
 }
 
 
@@ -238,7 +237,7 @@ void* wup_receiver (void* arg)
   //signal(SIGINT, quit_handler);
   //signal(SIGSEGV, quit_handler);
 
-  sem_t* sem = sem_open(SEM, 0);
+  sem_t* sem = sem_open(WUP_SEM, 0);
   while (!halting_flag)
   {
 
@@ -370,7 +369,9 @@ void* client_updater_for_server(void* arg)
     struct sockaddr_in server_addr;
     char buffer[1024];
     VehicleUpdatePacket* veh_up  = malloc(sizeof(VehicleUpdatePacket));
+    ret = sem_wait(cl_sem);
     veh_up->id = args->veh->id;
+    ret = sem_post(cl_sem);
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
     ERROR_HELPER( ret, "Could not create socket to send client updates\n");
@@ -381,8 +382,10 @@ void* client_updater_for_server(void* arg)
 
     while (!halting_flag)
     {
+        ret = sem_wait(cl_sem);
         veh_up->rotational_force = args->veh->rotational_force_update;
         veh_up->translational_force = args->veh->translational_force_update;
+        ret = sem_post(cl_sem);
         veh_up->header.type = 0x7;
         veh_up->header.size = sizeof(veh_up);
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) veh_up);
@@ -391,6 +394,7 @@ void* client_updater_for_server(void* arg)
         bytes_sent = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
 
         if (DEBUG) printf("sent client update [%d bytes] packet to server\n", bytes_sent);
+
         usleep(30000);
     }
     if (DEBUG) printf("halting flag: %d cl_up sender thread is closing\n", halting_flag);
@@ -403,7 +407,7 @@ void* client_updater_for_server(void* arg)
 void quit_handler(int sig)
 {
     halting_flag = 1;
-    usleep(60000);
+    usleep(500000);
     int ret, bytes_to_send;
     char* buffer = "quit";
     bytes_to_send = sizeof(buffer);
@@ -415,8 +419,10 @@ void quit_handler(int sig)
     ret = close(tcp_socket);
     ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
 
-    sem_t* sem = sem_open(SEM, 0);
+    sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(sem);
+    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+    ret = sem_wait(cl_sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
 
     World_destroy(&world);
@@ -425,7 +431,11 @@ void quit_handler(int sig)
     ERROR_HELPER(ret, "Could not post wup sem\n");
     ret = sem_close(sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
+    ret = sem_post(cl_sem);
+    ERROR_HELPER(ret, "Could not post wup sem\n");
     if (DEBUG) printf("Closing game, bye\n");
+    ret = sem_close(cl_sem);
+    ERROR_HELPER(ret, "Cannot close wup sem\n");
     exit(0);
 }
 
@@ -441,8 +451,10 @@ void quit_handler_for_main()
 
     if (DEBUG) printf("Closing game, bye\n");
 
-    sem_t* sem = sem_open(SEM, 0);
+    sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(sem);
+    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+    ret = sem_wait(cl_sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
 
     World_destroy(&world);
@@ -451,11 +463,17 @@ void quit_handler_for_main()
     ERROR_HELPER(ret, "Could not post wup sem\n");
     ret = sem_close(sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
+    ret = sem_post(cl_sem);
+    ERROR_HELPER(ret, "Could not post wup sem\n");
+    ret = sem_close(cl_sem);
+    ERROR_HELPER(ret, "Cannot close wup sem\n");
     exit(0);
 }
 
 //sem cleanup func
 void sem_cleanup(void) {
+    sem_close(cl_sem);
+    sem_unlink(CL_SEM);
     sem_close(wup_sem);
-    sem_unlink(SEM);
+    sem_unlink(WUP_SEM);
 }
