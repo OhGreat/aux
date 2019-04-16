@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
 
   tcp_socket = main_socket_desc;
   signal(SIGINT, quit_handler);
-  //signal(SIGSEGV, seg_fault_handler);
+  signal(SIGSEGV, seg_fault_handler);
 
   //requesting id to server
   IdPacket *id_packet = malloc(sizeof(IdPacket));
@@ -475,7 +475,7 @@ void quit_handler_for_main()
 
 void seg_fault_handler(int sig)
 {
-  //exit(0);
+  exit(0);
 }
 
 //sem cleanup func
