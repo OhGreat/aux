@@ -8,8 +8,8 @@
 
 #define HEADER_SIZE 4
 
-#define WUP_SEM "/sem"
-#define CL_SEM "/cl_sem"
+//#define WUP_SEM "/sem"
+//#define CL_SEM "/cl_sem"
 
 void* wup_receiver(void* arg);
 Image* unknown_veh_handler(int socket_desc, int id, World* world);
@@ -17,6 +17,7 @@ void quit_handler(int sig);
 void quit_handler_for_main(void);
 void* client_updater_for_server(void* arg);
 void sem_cleanup(void);
+void seg_fault_handler(int sig);
 
 typedef struct {
   ListHead vehicles;

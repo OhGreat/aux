@@ -31,8 +31,8 @@ Vehicle* vehicle;
 
 char* global_server_addr;
 int tcp_socket;
-sem_t* wup_sem;
-sem_t*cl_sem;
+sem_t wup_sem;
+sem_t cl_sem;
 
 int main(int argc, char **argv) {
   if (argc<3) {
@@ -56,24 +56,23 @@ int main(int argc, char **argv) {
   global_server_addr = argv[1];
 
   //creating semaphores to handle structures destrction and threads closing*****
-  sem_cleanup();
-  wup_sem = sem_open(WUP_SEM, O_CREAT | O_EXCL, 0600, 1);
-  if (wup_sem == SEM_FAILED && errno == EEXIST) {
-      sem_unlink(WUP_SEM);
-      wup_sem = sem_open(WUP_SEM, O_CREAT | O_EXCL, 0600, 1);
+  //sem_cleanup();
+  ret = sem_init(&wup_sem, 0, 1);
+  if (ret == -1 && errno == EEXIST) {
+      sem_destroy(&wup_sem);
+      ret = sem_init(&wup_sem, 0, 1);
   }
-  if (wup_sem == SEM_FAILED) {
-      printf("[FATAL ERROR] could not open wup_sem, the reason is: %s\n", strerror(errno));
+  if (ret == -1) {
+      printf("[FATAL ERROR] could not open &wup_sem, the reason is: %s\n", strerror(errno));
       exit(EXIT_FAILURE);
   }
-
-  cl_sem = sem_open(CL_SEM, O_CREAT | O_EXCL, 0600, 1);
-  if (cl_sem == SEM_FAILED && errno == EEXIST) {
-      sem_unlink(CL_SEM);
-      wup_sem = sem_open(CL_SEM, O_CREAT | O_EXCL, 0600, 1);
+  ret = sem_init(&cl_sem, 0, 1);
+  if (ret == -1 && errno == EEXIST) {
+      sem_destroy(&cl_sem);
+      ret = sem_init(&cl_sem, 0, 1);
   }
-  if (cl_sem == SEM_FAILED) {
-      printf("[FATAL ERROR] could not open wup_sem, the reason is: %s\n", strerror(errno));
+  if (ret == -1) {
+      printf("[FATAL ERROR] could not open cl_sem, the reason is: %s\n", strerror(errno));
       exit(EXIT_FAILURE);
   }
 
@@ -93,7 +92,7 @@ int main(int argc, char **argv) {
 
   tcp_socket = main_socket_desc;
   signal(SIGINT, quit_handler);
-  //signal(SIGSEGV, quit_handler);
+  //signal(SIGSEGV, seg_fault_handler);
 
   //requesting id to server
   IdPacket *id_packet = malloc(sizeof(IdPacket));
@@ -103,6 +102,7 @@ int main(int argc, char **argv) {
   bytes_to_send = Packet_serialize( buffer, (PacketHeader*) id_packet);
   bytes_sent = send(main_socket_desc, &bytes_to_send, sizeof(int), 0);
   bytes_sent = send(main_socket_desc, buffer, bytes_to_send, 0);
+  ERROR_HELPER(bytes_sent, "Error sending id request\n");
   if (DEBUG) printf("id request sent succesfully\n");
 
   //receiving id from server
@@ -237,7 +237,7 @@ void* wup_receiver (void* arg)
   //signal(SIGINT, quit_handler);
   //signal(SIGSEGV, quit_handler);
 
-  sem_t* sem = sem_open(WUP_SEM, 0);
+  //sem_t* sem = sem_open(WUP_SEM, 0);
   while (!halting_flag)
   {
 
@@ -259,7 +259,7 @@ void* wup_receiver (void* arg)
       update_n_veh = wup->num_vehicles;
       if (DEBUG) printf("n of clients in update = %d\n", update_n_veh);
 
-      ret = sem_wait(sem);
+      ret = sem_wait(&wup_sem);
       ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
       for (i=0; i<update_n_veh; i++)
       {
@@ -286,7 +286,7 @@ void* wup_receiver (void* arg)
         for (j=0; j < update_n_veh; j++)
         {
           cl_up = wup->updates[j];
-          if (current_veh->id == cl_up.id)
+          if ( current_veh->id == cl_up.id)
           {
             current_veh->x = cl_up.x;
             current_veh->y = cl_up.y;
@@ -297,18 +297,18 @@ void* wup_receiver (void* arg)
         }
         if (j == update_n_veh)
         {
-          if (DEBUG) printf("veh n: %d has disconnected.\n", current_veh->id);
           World_detachVehicle(args->world, current_veh);
+          if (DEBUG) printf("veh n: %d has disconnected.\n", current_veh->id);
+          break;
         }
-
         list_item = list_item->next;
       }
-      ret = sem_post(sem);
+      ret = sem_post(&wup_sem);
       ERROR_HELPER(ret, "Could not post wup sem\n");
-      Packet_free((PacketHeader*) wup);
+      //Packet_free((PacketHeader*) wup);
+      if (DEBUG) printf("WUP || wup read succesfully\n");
   }
-  ret = sem_close(sem);
-  if (DEBUG) printf("WUP || wup read succesfully\n");
+  ret = sem_destroy(&wup_sem);
   ret = close(socket_desc);
   ERROR_HELPER(ret, "Error closing wup socket desc\n");
   if (DEBUG) printf("halting flag: %d wup receiver is closing\n", halting_flag);
@@ -369,9 +369,9 @@ void* client_updater_for_server(void* arg)
     struct sockaddr_in server_addr;
     char buffer[1024];
     VehicleUpdatePacket* veh_up  = malloc(sizeof(VehicleUpdatePacket));
-    ret = sem_wait(cl_sem);
+    ret = sem_wait(&cl_sem);
     veh_up->id = args->veh->id;
-    ret = sem_post(cl_sem);
+    ret = sem_post(&cl_sem);
 
     socket_desc = socket(AF_INET, SOCK_DGRAM, 0);
     ERROR_HELPER( ret, "Could not create socket to send client updates\n");
@@ -382,16 +382,17 @@ void* client_updater_for_server(void* arg)
 
     while (!halting_flag)
     {
-        ret = sem_wait(cl_sem);
+        ret = sem_wait(&cl_sem);
         veh_up->rotational_force = args->veh->rotational_force_update;
         veh_up->translational_force = args->veh->translational_force_update;
-        ret = sem_post(cl_sem);
+
         veh_up->header.type = 0x7;
         veh_up->header.size = sizeof(veh_up);
         bytes_to_send = Packet_serialize(buffer, (PacketHeader*) veh_up);
 
         //bytes_sent = sendto(socket_desc, &bytes_to_send, HEADER_SIZE, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
         bytes_sent = sendto(socket_desc, buffer, bytes_to_send, 0, (struct sockaddr*) &server_addr, sizeof(server_addr));
+        ret = sem_post(&cl_sem);
 
         if (DEBUG) printf("sent client update [%d bytes] packet to server\n", bytes_sent);
 
@@ -412,6 +413,12 @@ void quit_handler(int sig)
     char* buffer = "quit";
     bytes_to_send = sizeof(buffer);
 
+
+    ret = sem_wait(&wup_sem);
+    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+    ret = sem_wait(&cl_sem);
+    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+
     ret = send(tcp_socket, buffer, bytes_to_send, 0);
     ERROR_HELPER(ret, "Could not send quit msg to server!\n");
 
@@ -419,22 +426,18 @@ void quit_handler(int sig)
     ret = close(tcp_socket);
     ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
 
-    sem_t* sem = sem_open(WUP_SEM, 0);
-    ret = sem_wait(sem);
-    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
-    ret = sem_wait(cl_sem);
-    ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
+
 
     World_destroy(&world);
 
-    ret = sem_post(sem);
+    ret = sem_post(&wup_sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
-    ret = sem_close(sem);
+    ret = sem_destroy(&wup_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
-    ret = sem_post(cl_sem);
+    ret = sem_post(&cl_sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
     if (DEBUG) printf("Closing game, bye\n");
-    ret = sem_close(cl_sem);
+    ret = sem_destroy(&cl_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
     exit(0);
 }
@@ -451,29 +454,34 @@ void quit_handler_for_main()
 
     if (DEBUG) printf("Closing game, bye\n");
 
-    sem_t* sem = sem_open(WUP_SEM, 0);
-    ret = sem_wait(sem);
+    //sem_t* sem = sem_open(WUP_SEM, 0);
+    ret = sem_wait(&wup_sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
-    ret = sem_wait(cl_sem);
+    ret = sem_wait(&cl_sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
 
     World_destroy(&world);
 
-    ret = sem_post(sem);
+    ret = sem_post(&wup_sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
-    ret = sem_close(sem);
+    ret = sem_destroy(&wup_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
-    ret = sem_post(cl_sem);
+    ret = sem_post(&cl_sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
-    ret = sem_close(cl_sem);
+    ret = sem_destroy(&cl_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
     exit(0);
 }
 
+void seg_fault_handler(int sig)
+{
+  //exit(0);
+}
+
 //sem cleanup func
 void sem_cleanup(void) {
-    sem_close(cl_sem);
-    sem_unlink(CL_SEM);
-    sem_close(wup_sem);
-    sem_unlink(WUP_SEM);
+    sem_close(&cl_sem);
+    //sem_unlink(CL_SEM);
+    sem_close(&wup_sem);
+    //sem_unlink(WUP_SEM);
 }

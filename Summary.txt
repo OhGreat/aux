@@ -1,0 +1,29 @@
+﻿Repository:
+https://github.com/OhGreat/aux.git
+
+Compilazione:
+make
+
+Avviare server:
+./so_game_server images/maze.pgm images/maze.ppm
+
+Avviare client:
+./so_game_client 127.0.0.1 images/arrow-right.ppm
+
+
+
+Descrizione generale server:
+
+Avviato il server, il main process crea le strutture necessarie per comunicare con i client (come socket per I vari thread, strutture per tenere traccia degli utenti, World, semafori etc.).
+
+In secondo luogo vengono creati due thread:
+	
+	-wup_sender_thread: si occupa di mandare in broadcast il WorldUpdatePacket a tutti I client ogni tot millisecondi.
+
+	-cl_thread: riceve I VehicleUpdate dai client sulla porta CL_UP_RECV_PORT e aggiorna il veicolo sul WorldUpdatePacket che il wup_sender_thread manda ai client.
+
+Infine, il main si mette in ascolto sulla porta SERVER_TCP_PORT
+e in loop aspetta di ricevere una richiesta di connesione da un client.
+Quando un client si connette, viene creato il
+	
+	-client_handler_thread: interagisce con il client scambiandosi tutte le informazioni necessarie per la connesione, (come id, texture e mappa di gioco), poi aspetta le richieste del client delle texture degli altri giocatori e gliele manda.

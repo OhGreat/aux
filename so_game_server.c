@@ -228,7 +228,7 @@ void* wup_sender(void* arg) {
     client_addr.sin_port = htons(CLIENT_WUP_RECEIVER_PORT);
     client_addr.sin_addr.s_addr = inet_addr(CLIENT_BROADCAST_ADDR);
 
-    char buffer[1024*1024*2];
+    char buffer[1024*1024];
     wup_sender_args* args = (wup_sender_args*) arg;
     socket_desc = args->wup_sender_desc;
 
@@ -268,7 +268,7 @@ void* wup_sender(void* arg) {
 
 void* cl_up_handler (void* arg) {
   int ret;
-  char buffer[1024*1024*2];
+  char buffer[1024*1024];
   cl_up_args* args = (cl_up_args*) arg;
   Vehicle* veh;
   WorldUpdatePacket* wup = args->wup;

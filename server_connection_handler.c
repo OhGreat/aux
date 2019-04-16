@@ -18,7 +18,7 @@
 void* server_connection_handler(void* arg)
 {
     int ret, client_id, tcp_socket_desc, bytes_to_send, bytes_sent, bytes_to_read, bytes_read;
-    char buffer[1024*1024*5];
+    char buffer[1024*1024*2];
     connection_handler_args* args = (connection_handler_args*) arg;
     tcp_socket_desc = args->tcp_socket_desc;
 
@@ -148,8 +148,8 @@ void* server_connection_handler(void* arg)
         wup_cl_remove(wup, client_id, args->world, veh);
         break;
       }
-      sem = sem_open(WUP_SEM, 0);
-      ret = sem_wait(sem);
+      //sem = sem_open(WUP_SEM, 0);
+      //ret = sem_wait(sem);
       ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
     //while(bytes_read < bytes_to_read) {
       bytes_read += recv(tcp_socket_desc, buffer+quit_len, texture_size-quit_len, MSG_WAITALL);
@@ -172,11 +172,10 @@ void* server_connection_handler(void* arg)
       bytes_sent = send(tcp_socket_desc, buffer, bytes_to_send, 0);
       ERROR_HELPER(bytes_sent, "Error sending texture to client that requested it\n");
       printf("texture: %d  (bytes: %d) sent to client: %d\n", text_req->id, bytes_sent, client_id);
-      usleep(10000);
-      ret = sem_post(sem);
-      ERROR_HELPER(ret, "Could not post wup sem\n");
-      ret = sem_close(sem);
-      ERROR_HELPER(ret, "Cannot close wup sem\n");
+      //ret = sem_post(sem);
+      //ERROR_HELPER(ret, "Could not post wup sem\n");
+      //ret = sem_close(sem);
+      //ERROR_HELPER(ret, "Cannot close wup sem\n");
     }
 
     if (DEBUG) printf("client: %d succesfully disconnected, closing handler thread\n", client_id);
