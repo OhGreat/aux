@@ -448,19 +448,18 @@ void quit_handler_for_main()
     usleep(500000);
     int ret;
 
-    ret = close(tcp_socket);
-    ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
-
-
-    if (DEBUG) printf("Closing game, bye\n");
-
     //sem_t* sem = sem_open(WUP_SEM, 0);
     ret = sem_wait(&wup_sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
     ret = sem_wait(&cl_sem);
     ERROR_HELPER(ret, "Cannot wait wup semaphore\n");
 
+    ret = close(tcp_socket);
+    ERROR_HELPER(ret, "quit handler failed closing tcp socket\n");
+
     World_destroy(&world);
+    if (DEBUG) printf("Closing game, bye\n");
+
 
     ret = sem_post(&wup_sem);
     ERROR_HELPER(ret, "Could not post wup sem\n");
