@@ -34,6 +34,13 @@ int tcp_socket;
 sem_t wup_sem;
 sem_t cl_sem;
 
+Image* map_elevation;
+Image* map_texture;
+Image* my_texture;
+
+cl_up_args* cl_args;
+wup_receiver_args* thread_args;
+
 int main(int argc, char **argv) {
   if (argc<3) {
     printf("usage: %s <server_address> <player texture>\n", argv[1]);
@@ -41,7 +48,7 @@ int main(int argc, char **argv) {
   }
 
   printf("loading texture image from %s ... ", argv[2]);
-  Image* my_texture = Image_load(argv[2]);
+  my_texture = Image_load(argv[2]);
   if (my_texture) {
     printf("rows: %d, cols: %d, channels: %d, data: %ld, row_data: %ld\n", my_texture->rows, my_texture->cols, my_texture->channels, sizeof(my_texture->data), sizeof(my_texture->row_data));
     printf("Done! \n");
@@ -104,6 +111,7 @@ int main(int argc, char **argv) {
   bytes_sent = send(main_socket_desc, buffer, bytes_to_send, 0);
   ERROR_HELPER(bytes_sent, "Error sending id request\n");
   if (DEBUG) printf("id request sent succesfully\n");
+  Packet_free( (PacketHeader*) id_packet);
 
   //receiving id from server
   bytes_to_read = message_size_getter(main_socket_desc, HEADER_SIZE);
@@ -115,7 +123,6 @@ int main(int argc, char **argv) {
       ERROR_HELPER(ret, "Cannot receive id from server\n");
       bytes_read += ret;
   }
-  Packet_free( (PacketHeader*) id_packet);
   id_packet = (IdPacket *) Packet_deserialize(buffer, bytes_read);
   int my_id = id_packet->id;
   Packet_free( (PacketHeader*) id_packet);
@@ -131,6 +138,7 @@ int main(int argc, char **argv) {
   ret = send(main_socket_desc, &bytes_to_send, HEADER_SIZE, 0);
   bytes_sent = send(main_socket_desc, buffer, bytes_to_send, 0);
   if (DEBUG) printf("vehicle texture sent succesfully to server, written: %d bytes\n", bytes_to_send);
+  free(texture_packet);
 
   //receiving map texture from server
   bytes_to_read = message_size_getter(main_socket_desc, HEADER_SIZE);
@@ -145,7 +153,7 @@ int main(int argc, char **argv) {
   ImagePacket* map_texture_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
   if (map_texture_packet->id != 0 || map_texture_packet->header.type != 0x4)
       ERROR_HELPER(-1, "Cannot deserialize map texture from server\n");
-  Image* map_texture = map_texture_packet->image;
+  map_texture = map_texture_packet->image;
   free(map_texture_packet);
   if (DEBUG) printf("map texture received succesfully, read: %d bytes\n", bytes_read);
 
@@ -162,8 +170,10 @@ int main(int argc, char **argv) {
   ImagePacket* map_elevation_packet = (ImagePacket*) Packet_deserialize(buffer, bytes_read);
   if (map_elevation_packet->id != 0 || map_elevation_packet->header.type != 0x4)
       ERROR_HELPER(-1,"Wrong id or packet type received from server\n");
-  Image* map_elevation = map_elevation_packet->image;
+  map_elevation = map_elevation_packet->image;
+  free(map_elevation_packet);
   if (DEBUG) printf("elevation map received succesfully, read: %d bytes\n", bytes_read);
+  //Packet_free((PacketHeader*)map_elevation_packet);
 
   //creating world
   World_init(&world, map_elevation, map_texture, 0.5, 0.5, 0.5);
@@ -174,7 +184,7 @@ int main(int argc, char **argv) {
 
   //thread to send cl_up to server
   pthread_t cl_up_thread;
-  cl_up_args* cl_args = malloc(sizeof(cl_up_args));
+  cl_args = malloc(sizeof(cl_up_args));
   cl_args->veh = vehicle;
   cl_args->server_addr = server_addr;
   ret = pthread_create(&cl_up_thread, NULL, client_updater_for_server, cl_args);
@@ -185,7 +195,7 @@ int main(int argc, char **argv) {
 
   //thread to handle wup
   pthread_t wup_receiver_thread;
-  wup_receiver_args* thread_args = malloc(sizeof(wup_receiver_args));
+  thread_args = malloc(sizeof(wup_receiver_args));
   thread_args->vehicles = world.vehicles;
   thread_args->my_id = my_id;
   thread_args->world = &world;
@@ -202,7 +212,7 @@ int main(int argc, char **argv) {
 
   //cleanup
   //quit_handler(1);
-  //World_destroy(&world);
+  World_destroy(&world);
   //exit(0);
   return 0;
 }
@@ -244,8 +254,9 @@ void* wup_receiver (void* arg)
       if (DEBUG) printf("WUP || waiting to receive next wup\n");
       ret = recv(socket_desc, &bytes_to_read, HEADER_SIZE, MSG_WAITALL);
       ERROR_HELPER(ret, "Error receiving wup size\n");
-      if (bytes_to_read == 0) {
 
+      if (bytes_to_read == 0) {
+        halting_flag = 1;
         if (DEBUG) printf("Connection lost on server side. halting flag: %d wup receiver is closing\n", halting_flag);
         ret = close(socket_desc);
         ERROR_HELPER(ret, "Error closing wup socket desc\n");
@@ -267,14 +278,7 @@ void* wup_receiver (void* arg)
         if (current_veh == 0)
         {
           if (DEBUG) printf("Starting acquisition of player: %d texture\n", wup->updates[i].id);
-          Image* img_txt = unknown_veh_handler(args->tcp_socket, wup->updates[i].id, args->world);
-          //printf("sizeof img_txt recved : %lo\n", sizeof(img_txt));
-          Vehicle* veh = malloc(sizeof(Vehicle));
-          //if (DEBUG && veh == 0) printf("texture received of veh: %d is 0\n", wup->updates[i].id);
-          //Image* new_texture = Image_load("images/test.ppm");
-          Vehicle_init(veh, args->world, wup->updates[i].id, img_txt);
-          World_addVehicle(args->world, veh);
-          if (DEBUG) printf("player: %d added succesfully to game\n", wup->updates[i].id);
+          unknown_veh_handler(args->tcp_socket, wup->updates[i].id, args->world);
         }
       }
 
@@ -283,10 +287,10 @@ void* wup_receiver (void* arg)
       for (i=0; i < world_n_veh; i++)
       {
         current_veh = (Vehicle*) list_item;
-        for (j=0; j < update_n_veh; j++)
+        for (j=0; j<update_n_veh; j++)
         {
           cl_up = wup->updates[j];
-          if ( current_veh->id == cl_up.id)
+          if (current_veh->id == cl_up.id)
           {
             current_veh->x = cl_up.x;
             current_veh->y = cl_up.y;
@@ -303,6 +307,7 @@ void* wup_receiver (void* arg)
         }
         list_item = list_item->next;
       }
+      Packet_free((PacketHeader*)wup);
       ret = sem_post(&wup_sem);
       ERROR_HELPER(ret, "Could not post wup sem\n");
       //Packet_free((PacketHeader*) wup);
@@ -317,7 +322,7 @@ void* wup_receiver (void* arg)
 
 
 //handles texture requests and adds vehicle to world
-Image* unknown_veh_handler(int socket_desc, int id, World* world)
+void unknown_veh_handler(int socket_desc, int id, World* world)
 {
     int ret, bytes_to_send;
     unsigned long int bytes_to_read;
@@ -349,17 +354,18 @@ Image* unknown_veh_handler(int socket_desc, int id, World* world)
         //Vehicle_init(veh, world, id, texture->image);
         //World_addVehicle(world, veh);
         if (DEBUG) printf("texture of veh n. %d received succesfully: %ld bytes\n", id,bytes_to_read);
-        return texture->image;
+        Vehicle* veh = malloc(sizeof(Vehicle));
+        Vehicle_init(veh, world, id, texture->image);
+        World_addVehicle(world, veh);
+        free(texture);
+        if (DEBUG) printf("player: %d added succesfully to game\n", id);
     }
     else {
       Packet_free((PacketHeader*) texture);
       if (DEBUG) printf("texture of veh n: %d is NULL... aborted\n", id);
-      return 0;
     }
-
-
-
 }
+
 
 void* client_updater_for_server(void* arg)
 {
@@ -399,6 +405,7 @@ void* client_updater_for_server(void* arg)
         usleep(30000);
     }
     if (DEBUG) printf("halting flag: %d cl_up sender thread is closing\n", halting_flag);
+    Packet_free((PacketHeader*) veh_up);
     ret = close(socket_desc);
     ERROR_HELPER(ret, "Error closing cl_up socket desc\n");
     return 0;
@@ -429,13 +436,17 @@ void quit_handler(int sig)
 
 
     World_destroy(&world);
+    Image_free( map_elevation);
+    Image_free( map_texture);
+    Image_free( my_texture);
 
-    ret = sem_post(&wup_sem);
-    ERROR_HELPER(ret, "Could not post wup sem\n");
+
+    //ret = sem_post(&wup_sem);
+    //ERROR_HELPER(ret, "Could not post wup sem\n");
     ret = sem_destroy(&wup_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
-    ret = sem_post(&cl_sem);
-    ERROR_HELPER(ret, "Could not post wup sem\n");
+    //ret = sem_post(&cl_sem);
+    //ERROR_HELPER(ret, "Could not post wup sem\n");
     if (DEBUG) printf("Closing game, bye\n");
     ret = sem_destroy(&cl_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
@@ -460,15 +471,20 @@ void quit_handler_for_main()
     World_destroy(&world);
     if (DEBUG) printf("Closing game, bye\n");
 
+    Image_free( map_elevation);
+    Image_free( map_texture);
+    Image_free( my_texture);
 
-    ret = sem_post(&wup_sem);
-    ERROR_HELPER(ret, "Could not post wup sem\n");
+
+    //ret = sem_post(&wup_sem);
+    //ERROR_HELPER(ret, "Could not post wup sem\n");
     ret = sem_destroy(&wup_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
-    ret = sem_post(&cl_sem);
-    ERROR_HELPER(ret, "Could not post wup sem\n");
+    //ret = sem_post(&cl_sem);
+    //ERROR_HELPER(ret, "Could not post wup sem\n");
     ret = sem_destroy(&cl_sem);
     ERROR_HELPER(ret, "Cannot close wup sem\n");
+
     exit(0);
 }
 
